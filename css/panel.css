@@ -1,0 +1,108 @@
+/* css/panel.css */
+/* パネル内部の UI パーツ（見出し、textarea、ヘルプなど） */
+
+.panel__header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* 補足説明など */
+.panel__help {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #666;
+}
+
+/* 上部の式入力テキストエリア */
+.expr-input {
+  width: 100%;
+  flex: 1;
+  min-height: 80px;
+  resize: none;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  padding: 4px;
+  outline: none;
+  background-color: #fdfdfd;
+}
+
+.expr-input:focus {
+  border-color: #4a90e2;
+  box-shadow: 0 0 0 1px rgba(74, 144, 226, 0.2);
+}
+
+/* ビルダーパネル内のフォーム部品 */
+.builder-panel__field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+
+.builder-panel__label {
+  font-size: 12px;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.builder-panel__number {
+  width: 64px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+/* ビルダーパネル内のボタン群 */
+.builder-panel__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+/* ビルダーでのヒント表示 */
+.builder-panel__hint {
+  font-size: 11px;
+  color: #777;
+  margin-top: 2px;
+}
+
+/* 素材選択リスト */
+.builder-selection-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.builder-selection-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+  padding: 2px 4px;
+  border: 1px solid #e0e0e0;
+  background-color: #ffffff;
+  margin-bottom: 2px;
+  font-size: 11px;
+}
+
+.builder-selection-item__label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.builder-selection-item__controls {
+  display: flex;
+  gap: 2px;
+}
+
+/* ビルダーのメッセージ領域 */
+.builder-panel__message {
+  font-size: 11px;
+  min-height: 1.2em;
+}

@@ -1,0 +1,130 @@
+/* css/layout.css */
+/* 3 分割レイアウトとパネル全体のレイアウト */
+
+.app {
+  display: grid;
+  grid-template-rows: auto 1fr 1.2fr;
+  height: 100vh;
+  gap: 8px;
+  padding: 8px;
+}
+
+/* 各パネルの共通レイアウト */
+.panel {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: #fff;
+}
+
+/* パネルヘッダー */
+.panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+/* ブロック一覧 (Word & Equation) */
+.block-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px;
+}
+
+/* 式パネル内部のレイアウト (Equation list + Builder panel) */
+.panel-equation-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 8px;
+}
+
+/* 左: Equation ブロック一覧 */
+.block-list--equations {
+  flex: 2;
+  min-width: 0;
+}
+
+/* 中: Word ブロック一覧 */
+/* .block-list--words { */
+  /* 上の panel--words 内で全体を埋める */
+/* } */
+
+/* 右: 式ビルダーパネル */
+.builder-panel {
+  flex: 1.2;
+  min-width: 220px;
+  max-width: 360px;
+  border-left: 1px solid #eee;
+  padding-left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ビルダーパネル内のセクション */
+.builder-panel__section {
+  border: 1px solid #eee;
+  border-radius: 4px;
+  padding: 6px;
+  margin-bottom: 4px;
+  background-color: #fafafa;
+}
+
+.builder-panel__title {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+/* 計算機的な UI がごちゃつかないようにするコンテナ */
+.builder-panel__section-title {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+/* 上部の式入力パネルを少し大きく使う */
+.panel--input {
+  min-height: 160px;
+}
+
+/* 中部 Word パネル */
+.panel--words {
+  min-height: 140px;
+}
+
+/* 下部 Equation パネル */
+.panel--equations {
+  min-height: 200px;
+}
+
+/* スマホ / 狭い画面向け簡易ブレークポイント */
+@media (max-width: 900px) {
+  .app {
+    grid-template-rows: auto auto auto;
+    height: auto;
+  }
+
+  .panel-equation-body {
+    flex-direction: column;
+  }
+
+  .builder-panel {
+    max-width: none;
+    border-left: none;
+    border-top: 1px solid #eee;
+    padding-left: 0;
+    padding-top: 8px;
+  }
+
+  .block-list {
+    max-height: 180px;
+  }
+}

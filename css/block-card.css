@@ -1,0 +1,80 @@
+/* css/block-card.css */
+/* Word ブロック / Equation ブロックカードの見た目 */
+
+.block-card {
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  padding: 4px 6px;
+  min-width: 160px;
+  max-width: 280px;
+  font-size: 11px;
+  background-color: #fff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+}
+
+/* .block-card + .block-card { */
+  /* ブロック間の最小マージン。実際の隙間は .block-list の gap がメイン */
+/* } */
+
+/* ヘッダ部 */
+.block-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.block-card__title {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.block-card__meta {
+  font-size: 10px;
+  color: #888;
+}
+
+/* 本文部 */
+.block-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.block-card__line {
+  display: flex;
+  gap: 4px;
+}
+
+.block-card__label {
+  font-weight: 600;
+  margin-right: 2px;
+}
+
+/* Word / Equation の種別ごとの色分け */
+.block-card--word {
+  background: #f7fbff;
+  border-color: #b3d4ff;
+}
+
+.block-card--equation {
+  background: #fdf7ff;
+  border-color: #d8b3ff;
+}
+
+/* hover 時 */
+.block-card:hover {
+  box-shadow: 0 0 0 1px rgba(74, 144, 226, 0.2);
+}
+
+/* キーボードフォーカス */
+.block-card:focus {
+  outline: 2px solid #4a90e2;
+  outline-offset: 1px;
+}

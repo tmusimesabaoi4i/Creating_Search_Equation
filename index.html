@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>特許検索式ブロックビルダー</title>
+
+  <!-- CSS 読み込み（中身は別途実装） -->
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/panel.css" />
+  <link rel="stylesheet" href="css/block-card.css" />
+  <link rel="stylesheet" href="css/controls.css" />
+  <link rel="stylesheet" href="css/state.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- 上: 式入力パネル -->
+    <section class="panel panel--input">
+      <header class="panel__header">
+        <h2>式入力 / 定義</h2>
+        <button id="btn-parse" class="btn">解析してブロックに反映</button>
+      </header>
+      <textarea
+        id="expr-input"
+        class="expr-input"
+        placeholder="例)&#10;NB = 基地局+NB+eNB&#10;CLS1 = H04W16/24+H04W36/00 /CP"
+      ></textarea>
+      <div class="panel__help">
+        <p>
+          <code>10n</code> = NNn(10), <code>10c</code> = NNc(10),
+          <code>+</code> = OR, <code>*</code> = AND<br />
+          <code>/TX</code> は式出力時に自動付与されます（定義フェーズでは不要）。
+        </p>
+      </div>
+      <div id="input-errors" class="error-message"></div>
+    </section>
+
+    <!-- 中: Word ブロック -->
+    <section class="panel panel--words">
+      <header class="panel__header">
+        <h2>Word ブロック</h2>
+        <!-- v1 では disabled のまま -->
+        <button
+          id="btn-generate-expr-from-words"
+          class="btn"
+          disabled
+        >
+          （将来）選択 Word から式生成
+        </button>
+      </header>
+      <div id="word-list" class="block-list block-list--words"></div>
+    </section>
+
+    <!-- 下: Equation ブロック + 式ビルダー -->
+    <section class="panel panel--equations">
+      <header class="panel__header">
+        <h2>式 bloc (Equation Blocks)</h2>
+      </header>
+
+      <div class="panel-equation-body">
+        <!-- 左: Equation ブロック一覧 -->
+        <div id="equation-list" class="block-list block-list--equations"></div>
+
+        <!-- 右: 式ビルダーパネル -->
+        <aside id="builder-panel" class="builder-panel">
+          <h3 class="builder-panel__title">式ビルダー</h3>
+
+          <!-- 選択中素材一覧 -->
+          <div class="builder-panel__section">
+            <div class="builder-panel__section-title">素材（最大 3 個）</div>
+            <ul id="builder-selection-list" class="builder-selection-list">
+              <!-- ProximityPanel が li 要素を動的挿入 -->
+            </ul>
+            <div class="builder-panel__hint">
+              Word / Equation カードをクリックして素材に追加します。<br />
+              順序を変更するには ↑ / ↓ ボタンを使用します。
+            </div>
+          </div>
+
+          <!-- 近傍パラメータ -->
+          <div class="builder-panel__section">
+            <div class="builder-panel__section-title">近傍パラメータ</div>
+            <div class="builder-panel__field">
+              <span class="builder-panel__label">近傍形式</span>
+              <label>
+                <input type="radio" name="prox-mode" value="n" checked />
+                n (NNn)
+              </label>
+              <label>
+                <input type="radio" name="prox-mode" value="c" />
+                c (NNc)
+              </label>
+            </div>
+            <div class="builder-panel__field">
+              <label class="builder-panel__label" for="prox-k-input">
+                近傍数 (NN)
+              </label>
+              <input
+                id="prox-k-input"
+                type="number"
+                min="0"
+                max="99"
+                value="10"
+                class="builder-panel__number"
+              />
+            </div>
+          </div>
+
+          <!-- 式生成ボタン群 -->
+          <div class="builder-panel__section">
+            <div class="builder-panel__section-title">式生成</div>
+            <div class="builder-panel__buttons">
+              <button id="btn-build-l1" class="btn-small">
+                1要素式
+              </button>
+              <button id="btn-build-prox2" class="btn-small">
+                2近傍式
+              </button>
+              <button id="btn-build-prox3" class="btn-small">
+                3近傍式
+              </button>
+            </div>
+            <div class="builder-panel__buttons">
+              <button id="btn-build-or" class="btn-small">
+                OR 結合 (E1 + E2)
+              </button>
+              <button id="btn-build-and" class="btn-small">
+                AND 結合 (E1 * E2)
+              </button>
+            </div>
+          </div>
+
+          <!-- ビルダー専用メッセージ -->
+          <div id="builder-message" class="builder-panel__message"></div>
+        </aside>
+      </div>
+    </section>
+  </div>
+
+  <!-- メインエントリ（ここから AppController を起動） -->
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

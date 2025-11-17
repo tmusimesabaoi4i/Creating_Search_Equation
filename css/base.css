@@ -1,0 +1,59 @@
+/* css/base.css */
+/* 全体のベーススタイル（フォント、box-sizing、余白リセット） */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #222;
+  background-color: #fafafa;
+}
+
+/* すべての要素で box-sizing: border-box */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* 等幅フォント */
+code,
+pre,
+textarea {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+}
+
+/* 見出しのデフォルトマージンを少し抑える */
+h1,
+h2,
+h3,
+h4 {
+  margin: 0.25em 0;
+}
+
+/* リストの余白を抑えめに */
+ul,
+ol {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+  padding-left: 1.4em;
+}
+
+/* スクロールバーを少し細く（対応ブラウザのみ） */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}

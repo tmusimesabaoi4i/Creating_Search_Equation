@@ -1,0 +1,37 @@
+/* css/state.css */
+/* 状態（選択中・エラーなど）の視覚化 */
+
+/* 選択中カード */
+.is-selected {
+  outline: 2px solid #4a90e2;
+  outline-offset: 1px;
+}
+
+/* 入力エラーなど（汎用） */
+.is-error {
+  border-color: #e74c3c !important;
+  background-color: #fff4f4;
+}
+
+/* 入力エラーのメッセージ領域 */
+.error-message {
+  color: #e74c3c;
+  font-size: 11px;
+  margin-top: 4px;
+  white-space: pre-wrap;
+  min-height: 1.2em;
+  display: none;
+}
+
+.error-message.is-visible {
+  display: block;
+}
+
+/* ビルダーのメッセージ状態 */
+.builder-panel__message.is-error {
+  color: #e74c3c;
+}
+
+.builder-panel__message.is-info {
+  color: #2d7dd2;
+}
