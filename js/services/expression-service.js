@@ -7,6 +7,8 @@ class ExpressionService {
    */
   constructor(blockRepository) {
     this.repo = blockRepository;
+    this.wordTokenGen = new WordTokenGenerator(blockRepository);
+    this.classTokenGen = new ClassTokenGenerator(blockRepository);
   }
 
   /**
@@ -78,7 +80,6 @@ class ExpressionService {
 
     tokens.forEach((token) => {
       if (!this.repo.findWordBlockByToken(token)) {
-        // 既存ユーティリティに委譲
         this.repo.createWordBlockFromToken(token, `(${token})`);
       }
     });
@@ -97,28 +98,29 @@ class ExpressionService {
    * @private
    */
   _createWordBlockFromExpr(name, expr) {
-    const logical = expr.renderLogical(); // 例: "基地局+NB+eNB"
+    const logical = expr.renderLogical();
     const body = logical.trim();
 
-    // token: name があればそれを使う。無ければランダム5文字。
     let token = name && String(name).trim();
     if (!token) {
-      token = this._generateUniqueToken(5);
+      token = this.wordTokenGen.generate();
     }
 
     const label = token;
-    const id = this.repo.findOrCreateIdForLabel(label, 'WB');
-    let wb = this.repo.get(id);
 
+    // token で既存 WordBlock を優先検索
+    let wb = this.repo.findWordBlockByToken(token);
     if (wb && wb.kind === 'WB') {
       wb.token = token;
+      wb.label = label;
       wb.updateQueryText(`(${body})`);
       this.repo.upsert(wb);
-    } else {
-      wb = new WordBlock(id, label, token, `(${body})`);
-      this.repo.upsert(wb);
+      return wb.id;
     }
 
+    const id = this.repo.findOrCreateIdForLabel(label, 'WB');
+    wb = new WordBlock(id, label, token, `(${body})`);
+    this.repo.upsert(wb);
     return id;
   }
 
@@ -126,6 +128,15 @@ class ExpressionService {
    * 分類ブロック生成:
    *  - 使用可能: 識別子 + '+' のみ
    *  - 禁止: '*', 近傍演算(10n/10c), BlockRef, ProximityNode など
+   *
+   * token は
+   *   NAME = expr  → NAME
+   *   expr         → ランダム5文字（ClassTokenGenerator）
+   *
+   * ClassBlock は、
+   *   codes: [ "H04W36/00", "H04W24/00" ]
+   *   classificationExpr: "(H04W36/00+H04W24/00)"
+   *   searchExpr: "[(H04W36/00+H04W24/00)/CP+(H04W36/00+H04W24/00)/FI]"
    *
    * @param {string|null} name
    * @param {ExprNode} expr
@@ -147,22 +158,26 @@ class ExpressionService {
       throw new Error('分類コードが 1 つも見つかりませんでした。');
     }
 
-    const label = (name && String(name).trim()) || codes[0];
-    const id = this.repo.findOrCreateIdForLabel(label, 'CB');
-    let cb = this.repo.get(id);
-
-    if (cb && cb.kind === 'CB') {
-      cb.codes = codes;
-      if (typeof cb.touchUpdated === 'function') {
-        cb.touchUpdated();
-      }
-      this.repo.upsert(cb);
-    } else {
-      // ClassBlock は core/block.js で定義済み想定
-      cb = new ClassBlock(id, label, codes);
-      this.repo.upsert(cb);
+    let token = name && String(name).trim();
+    if (!token) {
+      token = this.classTokenGen.generate();
     }
 
+    const label = token || codes[0];
+
+    // token で既存 ClassBlock を優先検索
+    let cb = this.repo.findClassBlockByToken(token);
+    if (cb && cb.kind === 'CB') {
+      cb.token = token;
+      cb.label = label;
+      cb.setCodes(codes); // codes から classificationExpr / searchExpr を再計算
+      this.repo.upsert(cb);
+      return cb.id;
+    }
+
+    const id = this.repo.findOrCreateIdForLabel(label, 'CB');
+    cb = new ClassBlock(id, label, token, codes);
+    this.repo.upsert(cb);
     return id;
   }
 
@@ -200,37 +215,6 @@ class ExpressionService {
 
     // それ以外（近傍、BlockRef など）は分類ブロックとしては不許可
     return false;
-  }
-
-  /**
-   * ランダムな 5 文字 token を生成し、既存 WordBlock の token と重複しないようにする
-   *
-   * @param {number} length
-   * @returns {string}
-   * @private
-   */
-  _generateUniqueToken(length = 5) {
-    const chars =
-      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    const repo = this.repo;
-
-    // 衝突する可能性は極めて低いが、念のためループで確認
-    for (;;) {
-      let token = '';
-      for (let i = 0; i < length; i++) {
-        const idx = Math.floor(Math.random() * chars.length);
-        token += chars.charAt(idx);
-      }
-
-      const existing =
-        typeof repo.findWordBlockByToken === 'function'
-          ? repo.findWordBlockByToken(token)
-          : null;
-
-      if (!existing) {
-        return token;
-      }
-    }
   }
 }
 

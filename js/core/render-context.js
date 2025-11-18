@@ -1,25 +1,16 @@
 // js/core/render-context.js
 // AST が Block や token をクエリ文字列に解決するためのコンテキスト。
 
-// import {
-//   Block,
-//   WordBlock,
-//   ClassBlock,
-//   EquationBlock,
-// } from './block.js';
-// import { BlockRepository } from './block-repository.js';
-
-/** export class */ class RenderContext {
+class RenderContext {
   /**
    * @param {BlockRepository} blockRepository
    */
   constructor(blockRepository) {
-    /** @type {BlockRepository} */
     this.repo = blockRepository;
   }
 
   /**
-   * ID から Block を取得する。
+   * ID から Block を取得
    * @param {string} blockId
    * @returns {Block|undefined}
    */
@@ -29,70 +20,56 @@
   }
 
   /**
-   * WordBlock, ClassBlock, EquationBlock を適切な形式で検索式に変換する。
-   *
-   * - WordBlock:
-   *     queryText (例: "(基地局+NB+eNB)")
-   *
-   * - ClassBlock:
-   *     (A+B+...)/CP+(A+B+...)/FI
-   *   （codes: ["H04W16/24","H04W36/00"] → "(H04W16/24+H04W36/00)/CP+(H04W16/24+H04W36/00)/FI"）
-   *
-   * - EquationBlock:
-   *     EquationBlock.renderQuery(ctx) の結果（/TX や [] 付き）
+   * Block → 検索式文字列
+   *   - WordBlock  → queryText そのもの（/TX なし）
+   *   - ClassBlock → searchExpr（[(F)/CP+(F)/FI] の形）
+   *   - EquationBlock → EquationBlock.renderQuery(ctx)
    *
    * @param {string|Block} blockOrId
    * @returns {string}
    */
   renderBlockQuery(blockOrId) {
-    if (!this.repo) return '';
-
-    /** @type {Block|undefined} */
-    let block = undefined;
+    let block = blockOrId;
     if (typeof blockOrId === 'string') {
-      block = this.repo.get(blockOrId);
-    } else {
-      block = blockOrId;
+      block = this.resolveBlock(blockOrId);
     }
-
     if (!block) return '';
 
-    if (block instanceof WordBlock || block.kind === 'WB') {
-      return block.queryText || '';
+    if (block.kind === 'WB') {
+      const wb = block;
+      return wb.queryText || wb.token || '';
     }
 
-    if (block instanceof ClassBlock || block.kind === 'CB') {
-      const codes = Array.isArray(block.codes) ? block.codes : [];
-      if (!codes.length) return '';
-      const joined = codes.join('+'); // "H04W16/24+H04W36/00"
-      // 分類は常に /CP と /FI の両方で検索
-      return `(${joined})/CP+(${joined})/FI`;
+    if (block.kind === 'CB') {
+      const cb = block;
+      if (cb.searchExpr) return cb.searchExpr;
+      // 念のため fallback
+      if (cb.codes && cb.codes.length) {
+        const inner = cb.codes.join('+');
+        const cls = `(${inner})`;
+        return `[${cls}/CP+${cls}/FI]`;
+      }
+      return '';
     }
 
-    if (block instanceof EquationBlock || block.kind === 'EB') {
-      // EquationBlock の renderQuery は /TX や [] を含む完成形を返す
-      return block.renderQuery(this);
+    if (block.kind === 'EB') {
+      const eb = block;
+      return eb.renderQuery(this);
     }
 
-    // 未知種別
     return '';
   }
 
   /**
-   * token に対応する WordBlock を返す。
+   * token → WordBlock を取得
    * @param {string} token
    * @returns {WordBlock|undefined}
    */
   getWordForToken(token) {
     if (!this.repo) return undefined;
-    if (typeof this.repo.findWordBlockByToken === 'function') {
-      return this.repo.findWordBlockByToken(token);
-    }
-
-    // フォールバック: 線形探索
-    const words = this.repo.getAllWords();
-    return words.find((wb) => wb.token === token);
+    return this.repo.findWordBlockByToken(token);
   }
 }
 
+// グローバル公開
 window.RenderContext = RenderContext;
