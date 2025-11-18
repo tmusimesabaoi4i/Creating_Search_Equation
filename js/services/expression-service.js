@@ -1,266 +1,238 @@
 // js/services/expression-service.js
-// 上部 textarea のテキスト → ブロック群（Word / Class / Equation）
-// ・行ごとのパース
-//   - 単語定義行: NAME = A+B+...          → WordBlock
-//   - 分類定義行: CLS = H04W16/24+... /CP → ClassBlock
-//   - 式行      : NB*UE, NB,10n,UE など   → EquationBlock
-// ・Equation → Word 再分割
+// ブロック生成サービス（1行入力 + 単語/分類 切り替え）
 
-// import { WordBlock, ClassBlock, EquationBlock } from '../core/block.js';
-// import { Lexer } from '../parser/lexer.js';
-// import { Parser } from '../parser/parser.js';
-// import { WordTokenNode, LogicalNode } from '../core/expr-node.js';
-
-// export class ExpressionService {
 class ExpressionService {
   /**
-   * @param {import('../core/block-repository.js').BlockRepository} blockRepository
+   * @param {BlockRepository} blockRepository
    */
   constructor(blockRepository) {
-    // BlockRepository への参照
     this.repo = blockRepository;
   }
 
   /**
-   * 各行を式として解析し、WordBlock / ClassBlock / EquationBlock を生成・更新する。
+   * ブロックビルダー用: テキストエリア入力 → 単語 or 分類ブロック生成
    *
-   * 行の扱いルール:
-   * 1) 分類定義行:
-   *    CLS1 = H04W16/24+H04W36/00 /CP
-   *      → ClassBlock.codes = ["H04W16/24", "H04W36/00"]
-   *      → "*", 近傍を含む場合はエラー
-   *
-   * 2) 単語定義行:
-   *    NB = 基地局+NB+eNB
-   *      → WordBlock.token = "NB"
-   *      → WordBlock.queryText = "(基地局 + NB + eNB)"
-   *
-   * 3) 式行:
-   *    NB*UE, NB,10n,UE, {NB,UE,端末},30n など
-   *      → EquationBlock として保存
-   *      → expr.collectWordTokens() から WordBlock を自動生成（未登録 token）
-   *
-   * @param {string} text - テキストエリアの全内容
-   * @returns {{ errors: string[], createdEquationIds: string[] }}
+   * @param {string} text - textarea 全体の内容
+   * @param {"word"|"class"} builderKind - ラジオボタンの選択
+   * @returns {{ errors: string[], createdBlockIds: string[] }}
    */
-  parseInputLines(text) {
+  parseInputLines(text, builderKind) {
     const errors = [];
-    const createdEquationIds = [];
+    const createdIds = [];
 
-    const lines = (text || '').split(/\r?\n/);
+    const kind = builderKind === 'class' ? 'class' : 'word';
+    const raw = (text || '').split(/\r?\n/);
+    const nonEmpty = raw.map((l) => l.trim()).filter((l) => l.length > 0);
 
-    lines.forEach((rawLine, idx) => {
-      const lineNo = idx + 1;
-      const trimmed = rawLine.trim();
-      if (!trimmed) return;              // 空行は無視
-      if (trimmed.startsWith('#')) return; // コメント行は無視
+    if (nonEmpty.length === 0) {
+      errors.push('入力が空です。');
+      return { errors, createdBlockIds: createdIds };
+    }
 
-      try {
-        const lexer = new Lexer(trimmed);
-        const parser = new Parser(lexer);
-        const result = parser.parseLine();
-        const name = result.name;
-        const expr = result.expr;
-        const field = result.field;
+    if (nonEmpty.length > 1) {
+      errors.push(
+        '一度に登録できるのは 1 行だけです。先頭行のみ処理しました。'
+      );
+    }
 
-        // --- 分類定義行: /CP または /FI が末尾についている ---
-        if (field === '/CP' || field === '/FI') {
-          this._createOrUpdateClassBlockFromLine(name, lineNo, expr, field);
-          // 分類定義行からは EquationBlock は作らない
-          return;
-        }
+    const line = nonEmpty[0];
 
-        // /TX が末尾に付いている式は「ユーザが貼り付けた完成式」とみなし、
-        // /TX は無視して EquationBlock として取り込む（WordBlock 定義にはしない）。
-        const effectiveField = field === '/TX' ? undefined : field;
-        if (effectiveField) {
-          // 現状 /CP, /FI, /TX 以外のフィールドは想定しないのでエラーにする。
-          throw new Error('未対応のフィールド指定: ' + effectiveField);
-        }
+    try {
+      const lexer = new Lexer(line);
+      const parser = new Parser(lexer);
+      const parsed = parser.parseLine(); // { name, expr, field }
 
-        // --- 単語定義行: name = expr, かつ field なし ---
-        if (name && !effectiveField) {
-          this._createOrUpdateWordBlockFromLine(name, expr);
-          // 単語定義行も EquationBlock は作らない
-          return;
-        }
+      const name = parsed.name || null;
+      const expr = parsed.expr;
 
-        // --- それ以外は式行: EquationBlock として扱う ---
-        // 例: NB*UE, NB,10n,UE, {NB,UE,端末},30n など
-        // → 式で使われる token から、未定義の WordBlock を自動生成する。
-        const tokens = new Set();
-        expr.collectWordTokens(tokens);
-        this._ensureWordBlocksForTokens(tokens);
-
-        const label = name || 'EB行' + lineNo;
-        const id = this.repo.findOrCreateIdForLabel(label, 'EB');
-        const eb = new EquationBlock(id, label, expr);
-        this.repo.upsert(eb);
-        createdEquationIds.push(id);
-      } catch (e) {
-        const msg = e && e.message ? e.message : String(e);
-        errors.push('行 ' + lineNo + ': ' + msg);
+      if (!expr) {
+        throw new Error('式が解析できませんでした。');
       }
-    });
 
-    return { errors: errors, createdEquationIds: createdEquationIds };
+      let newId;
+      if (kind === 'word') {
+        newId = this._createWordBlockFromExpr(name, expr);
+      } else {
+        newId = this._createClassBlockFromExpr(name, expr);
+      }
+      if (newId) {
+        createdIds.push(newId);
+      }
+    } catch (e) {
+      errors.push('行 1: ' + (e && e.message ? e.message : String(e)));
+    }
+
+    return { errors, createdBlockIds: createdIds };
   }
 
   /**
-   * 指定 EB の AST から語 token を再収集し、未登録の WordBlock を追加する。
+   * EquationBlock の AST から WordBlock を再生成
    * @param {string} ebId
    */
   regenerateWordsFromEquation(ebId) {
-    const block = this.repo.get(ebId);
-    if (!(block instanceof EquationBlock) || !block.root) {
-      return;
-    }
+    const eb = this.repo.get(ebId);
+    if (!eb || eb.kind !== 'EB' || !eb.root) return;
 
     const tokens = new Set();
-    block.root.collectWordTokens(tokens);
+    eb.root.collectWordTokens(tokens);
 
-    this._ensureWordBlocksForTokens(tokens);
-  }
-
-  // =========================================================
-  // 内部ヘルパ
-  // =========================================================
-
-  /**
-   * token 集合に対して、存在しないものについて WordBlock を生成する。
-   * ・token="NB" → WordBlock(token="NB", queryText="(NB)")
-   *   （後でユーザが queryText を "(基地局+NB+eNB)" に編集できる）
-   *
-   * @param {Set<string>} tokens
-   * @private
-   */
-  _ensureWordBlocksForTokens(tokens) {
     tokens.forEach((token) => {
       if (!this.repo.findWordBlockByToken(token)) {
-        // 仕様上、queryText は括弧付きで格納
-        this.repo.createWordBlockFromToken(token, '(' + token + ')');
+        // 既存ユーティリティに委譲
+        this.repo.createWordBlockFromToken(token, `(${token})`);
       }
     });
   }
 
   /**
-   * 単語定義行 (例: NB = 基地局+NB+eNB) から WordBlock を作成/更新。
-   * ・token = name
-   * ・queryText = "(" + expr を論理式として文字列化したもの + ")"
+   * 単語ブロック生成:
+   *  NAME = expr  → token = NAME
+   *  expr         → token = ランダム5文字
    *
-   * @param {string} name - 左辺の識別子 (token)
-   * @param {import('../core/expr-node.js').ExprNode} expr
+   * queryText は (exprの論理表示) として保存
+   *
+   * @param {string|null} name
+   * @param {ExprNode} expr
+   * @returns {string} 生成・更新した WordBlock の ID
    * @private
    */
-  _createOrUpdateWordBlockFromLine(name, expr) {
-    const token = name;
-    const body = expr.renderLogical(); // 例: "基地局 + NB + eNB"
-    const queryText = '(' + body + ')';
+  _createWordBlockFromExpr(name, expr) {
+    const logical = expr.renderLogical(); // 例: "基地局+NB+eNB"
+    const body = logical.trim();
 
-    let wb = this.repo.findWordBlockByToken(token);
+    // token: name があればそれを使う。無ければランダム5文字。
+    let token = name && String(name).trim();
+    if (!token) {
+      token = this._generateUniqueToken(5);
+    }
 
-    if (wb) {
-      // 既存が見つかった場合は label/token を name に揃えつつ queryText を更新
-      wb.label = name;
+    const label = token;
+    const id = this.repo.findOrCreateIdForLabel(label, 'WB');
+    let wb = this.repo.get(id);
+
+    if (wb && wb.kind === 'WB') {
       wb.token = token;
-      wb.updateQueryText(queryText);
+      wb.updateQueryText(`(${body})`);
       this.repo.upsert(wb);
     } else {
-      // 新規作成
-      const id = this.repo.findOrCreateIdForLabel(name, 'WB');
-      wb = new WordBlock(id, name, token, queryText);
+      wb = new WordBlock(id, label, token, `(${body})`);
       this.repo.upsert(wb);
     }
+
+    return id;
   }
 
   /**
-   * 分類定義行 (例: CLS1 = H04W16/24+H04W36/00 /CP) から ClassBlock を作成/更新。
+   * 分類ブロック生成:
+   *  - 使用可能: 識別子 + '+' のみ
+   *  - 禁止: '*', 近傍演算(10n/10c), BlockRef, ProximityNode など
    *
-   * 制約:
-   *  - expr は「分類コードの '+' 連結」のみ許可。
-   *    → WordTokenNode / LogicalNode('+') のみで構成
-   *  - '*', 近傍 (ProximityNode, SimultaneousProximityNode) は禁止。
-   *
-   * @param {string|undefined} name - 左辺の識別子（なければ "CB行n"）
-   * @param {number} lineNo - 行番号（ラベル生成用）
-   * @param {import('../core/expr-node.js').ExprNode} expr
-   * @param {string} field - "/CP" か "/FI"
+   * @param {string|null} name
+   * @param {ExprNode} expr
+   * @returns {string} 生成・更新した ClassBlock の ID
    * @private
    */
-  _createOrUpdateClassBlockFromLine(name, lineNo, expr, field) {
-    let codes;
-    try {
-      codes = this._extractCodesFromClassExpr(expr);
-    } catch (e) {
-      const msg = e && e.message ? e.message : String(e);
-      throw new Error(msg + '（分類定義行: ' + (name || '行' + lineNo) + '）');
+  _createClassBlockFromExpr(name, expr) {
+    if (!this._isValidClassificationExpr(expr)) {
+      throw new Error(
+        '分類ブロックでは "+" とコード列のみ使用できます（"*", 近傍演算, ブロック参照は不可）。'
+      );
     }
 
-    const label = name || 'CB行' + lineNo;
-    const id = this.repo.findOrCreateIdForLabel(label, 'CB');
-    const existing = this.repo.get(id);
+    const tokenSet = new Set();
+    expr.collectWordTokens(tokenSet);
+    const codes = Array.from(tokenSet);
 
-    if (existing && existing instanceof ClassBlock) {
-      existing.updateCodes(codes);
-      existing.updateFieldSuffix(field);
-      this.repo.upsert(existing);
+    if (codes.length === 0) {
+      throw new Error('分類コードが 1 つも見つかりませんでした。');
+    }
+
+    const label = (name && String(name).trim()) || codes[0];
+    const id = this.repo.findOrCreateIdForLabel(label, 'CB');
+    let cb = this.repo.get(id);
+
+    if (cb && cb.kind === 'CB') {
+      cb.codes = codes;
+      if (typeof cb.touchUpdated === 'function') {
+        cb.touchUpdated();
+      }
+      this.repo.upsert(cb);
     } else {
-      const cb = new ClassBlock(id, label, codes, field);
+      // ClassBlock は core/block.js で定義済み想定
+      cb = new ClassBlock(id, label, codes);
       this.repo.upsert(cb);
     }
+
+    return id;
   }
 
   /**
-   * 分類用 expr から分類コード配列を抽出する。
+   * 分類式として許容されるか判定
+   * 許容:
+   *  - WordTokenNode のみ
+   *  - LogicalNode(op='+') とその再帰構造
    *
-   * 許可される構造:
-   *  - WordTokenNode("H04W16/24") 単体
-   *  - LogicalNode('+', [...WordTokenNode...]) のみからなる木
+   * 不許可:
+   *  - LogicalNode(op='*')
+   *  - ProximityNode / SimultaneousProximityNode
+   *  - BlockRefNode など
    *
-   * 禁止:
-   *  - LogicalNode('*', ...)
-   *  - 近傍ノード (ProximityNode, SimultaneousProximityNode)
-   *  - その他のノード種別
+   * これにより、H04W16/24*H04W36/00 などを分類として登録しない。
    *
-   * @param {import('../core/expr-node.js').ExprNode} expr
-   * @returns {string[]} codes
+   * @param {ExprNode} node
+   * @returns {boolean}
    * @private
    */
-  _extractCodesFromClassExpr(expr) {
-    const codes = new Set();
+  _isValidClassificationExpr(node) {
+    if (!node) return false;
 
-    const walk = (node) => {
-      if (node instanceof WordTokenNode) {
-        const token = node.token ? String(node.token).trim() : '';
-        if (token) {
-          codes.add(token);
-        }
-        return;
-      }
-
-      if (node instanceof LogicalNode) {
-        if (node.op !== '+') {
-          throw new Error('分類行には "*" や "-" ではなく "+" のみ使用できます');
-        }
-        node.children.forEach((child) => {
-          walk(child);
-        });
-        return;
-      }
-
-      // それ以外のノードは分類定義では禁止（近傍・BlockRef 等）
-      throw new Error('分類行に近傍や式ブロックを含めることはできません');
-    };
-
-    walk(expr);
-
-    if (!codes.size) {
-      throw new Error('分類行から分類コードを抽出できませんでした');
+    if (node instanceof WordTokenNode) {
+      return true;
     }
 
-    return Array.from(codes);
+    if (node instanceof LogicalNode) {
+      if (node.op !== '+') return false;
+      if (!Array.isArray(node.children) || node.children.length === 0) {
+        return false;
+      }
+      return node.children.every((ch) => this._isValidClassificationExpr(ch));
+    }
+
+    // それ以外（近傍、BlockRef など）は分類ブロックとしては不許可
+    return false;
+  }
+
+  /**
+   * ランダムな 5 文字 token を生成し、既存 WordBlock の token と重複しないようにする
+   *
+   * @param {number} length
+   * @returns {string}
+   * @private
+   */
+  _generateUniqueToken(length = 5) {
+    const chars =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const repo = this.repo;
+
+    // 衝突する可能性は極めて低いが、念のためループで確認
+    for (;;) {
+      let token = '';
+      for (let i = 0; i < length; i++) {
+        const idx = Math.floor(Math.random() * chars.length);
+        token += chars.charAt(idx);
+      }
+
+      const existing =
+        typeof repo.findWordBlockByToken === 'function'
+          ? repo.findWordBlockByToken(token)
+          : null;
+
+      if (!existing) {
+        return token;
+      }
+    }
   }
 }
 
-// ★ クラスをグローバル公開
+// グローバル公開
 window.ExpressionService = ExpressionService;

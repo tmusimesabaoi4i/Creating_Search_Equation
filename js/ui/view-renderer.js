@@ -1,8 +1,5 @@
 // js/ui/view-renderer.js
-// BlockRepository の内容を DOM に描画するだけの責務
-
-// 前提: dom-utils.js で window.create / window.clearChildren が定義済み
-// 前提: BlockRepository / RenderContext / WordBlock / EquationBlock 等は global
+// BlockRepository の内容を DOM に描画するだけのクラス
 
 class ViewRenderer {
   /**
@@ -15,51 +12,67 @@ class ViewRenderer {
   }
 
   /**
-   * WordBlock 一覧を描画
+   * Word / Class ブロック一覧を描画
    * @param {HTMLElement} containerEl
    */
   renderWords(containerEl) {
     clearChildren(containerEl);
-    const words = this.repo.getAllWords();
-    for (const wb of words) {
-      containerEl.appendChild(this.renderWordCard(wb));
-    }
+
+    const all =
+      typeof this.repo.getAll === 'function' ? this.repo.getAll() : [];
+    const words = all.filter((b) => b.kind === 'WB');
+    const classes = all.filter((b) => b.kind === 'CB');
+
+    words.forEach((wb) => {
+      containerEl.appendChild(this._renderWordCard(wb));
+    });
+
+    classes.forEach((cb) => {
+      containerEl.appendChild(this._renderClassCard(cb));
+    });
   }
 
   /**
-   * EquationBlock 一覧を描画
+   * Equation ブロック一覧を描画
    * @param {HTMLElement} containerEl
    */
   renderEquations(containerEl) {
     clearChildren(containerEl);
-    const equations = this.repo.getAllEquations();
-    for (const eb of equations) {
-      containerEl.appendChild(this.renderEquationCard(eb));
-    }
+
+    const all =
+      typeof this.repo.getAll === 'function' ? this.repo.getAll() : [];
+    const eqs = all.filter((b) => b.kind === 'EB');
+
+    eqs.forEach((eb) => {
+      containerEl.appendChild(this._renderEquationCard(eb));
+    });
   }
 
   /**
-   * WordBlock → DOM カード
+   * WordBlock 用カード
    * @param {WordBlock} word
    * @returns {HTMLElement}
+   * @private
    */
-  renderWordCard(word) {
-    const card = create('article', 'block-card block-card--word');
+  _renderWordCard(word) {
+    const card = create('div', 'block-card block-card--word');
     card.dataset.id = word.id;
 
-    const header = create('div', 'block-card__header');
+    const header = create('div', 'block-card__title');
+    const labelSpan = create('span', 'block-card__label');
+    labelSpan.textContent = word.label || word.token || word.id;
 
-    const title = create('div', 'block-card__title');
-    title.textContent = word.label || word.token || word.id;
+    const pill = create('span', 'block-card__pill');
+    pill.textContent = 'WORD';
 
-    const meta = create('div', 'block-card__meta');
-    meta.textContent = word.id;
+    const btnRow = create('div', 'block-card__buttons');
 
-    const actions = create('div', 'block-card__actions');
-
-    const btnToEq = create('button', 'btn-small js-word-generate-eq');
-    btnToEq.type = 'button';
-    btnToEq.textContent = '式生成';
+    const btnGenerate = create(
+      'button',
+      'btn-small js-word-generate-eq'
+    );
+    btnGenerate.type = 'button';
+    btnGenerate.textContent = '式入力へ';
 
     const btnEdit = create('button', 'btn-small js-edit-block');
     btnEdit.type = 'button';
@@ -69,34 +82,23 @@ class ViewRenderer {
     btnDelete.type = 'button';
     btnDelete.textContent = '削除';
 
-    actions.appendChild(btnToEq);
-    actions.appendChild(btnEdit);
-    actions.appendChild(btnDelete);
+    btnRow.appendChild(btnGenerate);
+    btnRow.appendChild(btnEdit);
+    btnRow.appendChild(btnDelete);
 
-    header.appendChild(title);
-    header.appendChild(meta);
-    header.appendChild(actions);
+    header.appendChild(labelSpan);
+    header.appendChild(pill);
+    header.appendChild(btnRow);
 
     const body = create('div', 'block-card__body');
+    const rowToken = create('div');
+    rowToken.textContent = `token: ${word.token}`;
 
-    const line1 = create('div', 'block-card__line');
-    const label1 = create('span', 'block-card__label');
-    label1.textContent = '表示:';
-    const value1 = create('span');
-    value1.textContent = word.token || '(なし)';
-    line1.appendChild(label1);
-    line1.appendChild(value1);
+    const rowQuery = create('div');
+    rowQuery.textContent = `検索式: ${word.queryText || ''}`;
 
-    const line2 = create('div', 'block-card__line');
-    const label2 = create('span', 'block-card__label');
-    label2.textContent = '検索語:';
-    const value2 = create('span');
-    value2.textContent = word.queryText || '(未設定)';
-    line2.appendChild(label2);
-    line2.appendChild(value2);
-
-    body.appendChild(line1);
-    body.appendChild(line2);
+    body.appendChild(rowToken);
+    body.appendChild(rowQuery);
 
     card.appendChild(header);
     card.appendChild(body);
@@ -105,25 +107,88 @@ class ViewRenderer {
   }
 
   /**
-   * EquationBlock → DOM カード
+   * ClassBlock 用カード
+   * @param {ClassBlock} cb
+   * @returns {HTMLElement}
+   * @private
+   */
+  _renderClassCard(cb) {
+    const card = create('div', 'block-card block-card--word block-card--class');
+    card.dataset.id = cb.id;
+
+    const header = create('div', 'block-card__title');
+    const labelSpan = create('span', 'block-card__label');
+    labelSpan.textContent = cb.label || cb.id;
+
+    const pill = create('span', 'block-card__pill block-card__pill--class');
+    pill.textContent = 'CLASS';
+
+    const btnRow = create('div', 'block-card__buttons');
+
+    // ClassBlock は「式入力へ」ボタンは付けない（必要なら後で追加）
+    const btnEdit = create('button', 'btn-small js-edit-block');
+    btnEdit.type = 'button';
+    btnEdit.textContent = '編集';
+
+    const btnDelete = create('button', 'btn-small js-delete-block');
+    btnDelete.type = 'button';
+    btnDelete.textContent = '削除';
+
+    btnRow.appendChild(btnEdit);
+    btnRow.appendChild(btnDelete);
+
+    header.appendChild(labelSpan);
+    header.appendChild(pill);
+    header.appendChild(btnRow);
+
+    const body = create('div', 'block-card__body');
+    const codes = Array.isArray(cb.codes) ? cb.codes.join(' + ') : '';
+
+    const rowCodes = create('div');
+    rowCodes.textContent = `分類コード: ${codes}`;
+
+    // 検索式表示 (RenderContext に委譲)
+    let queryStr = '';
+    try {
+      if (this.ctx && typeof this.ctx.renderBlockQuery === 'function') {
+        queryStr = this.ctx.renderBlockQuery(cb);
+      }
+    } catch (e) {
+      queryStr = '(render error)';
+    }
+
+    const rowQuery = create('div');
+    rowQuery.textContent = `検索式: ${queryStr}`;
+
+    body.appendChild(rowCodes);
+    body.appendChild(rowQuery);
+
+    card.appendChild(header);
+    card.appendChild(body);
+
+    return card;
+  }
+
+  /**
+   * EquationBlock 用カード
    * @param {EquationBlock} eb
    * @returns {HTMLElement}
+   * @private
    */
-  renderEquationCard(eb) {
-    const card = create('article', 'block-card block-card--equation');
+  _renderEquationCard(eb) {
+    const card = create('div', 'block-card block-card--equation');
     card.dataset.id = eb.id;
 
-    const header = create('div', 'block-card__header');
+    const header = create('div', 'block-card__title');
+    const labelSpan = create('span', 'block-card__label');
+    labelSpan.textContent = eb.label || eb.id;
 
-    const title = create('div', 'block-card__title');
-    title.textContent = eb.label || eb.id;
+    const btnRow = create('div', 'block-card__buttons');
 
-    const meta = create('div', 'block-card__meta');
-    meta.textContent = eb.id;
-
-    const actions = create('div', 'block-card__actions');
-
-    const btnDecompose = create('button', 'btn-small js-decompose-words');
+    const btnDecompose = create(
+      'button',
+      'btn-small js-decompose-words'
+    );
     btnDecompose.type = 'button';
     btnDecompose.textContent = '語再生成';
 
@@ -135,34 +200,23 @@ class ViewRenderer {
     btnDelete.type = 'button';
     btnDelete.textContent = '削除';
 
-    actions.appendChild(btnDecompose);
-    actions.appendChild(btnEdit);
-    actions.appendChild(btnDelete);
+    btnRow.appendChild(btnDecompose);
+    btnRow.appendChild(btnEdit);
+    btnRow.appendChild(btnDelete);
 
-    header.appendChild(title);
-    header.appendChild(meta);
-    header.appendChild(actions);
+    header.appendChild(labelSpan);
+    header.appendChild(btnRow);
 
     const body = create('div', 'block-card__body');
 
-    const logicalLine = create('div', 'block-card__line');
-    const logicalLabel = create('span', 'block-card__label');
-    logicalLabel.textContent = '論理式:';
-    const logicalValue = create('span');
-    logicalValue.textContent = eb.renderLogical(this.ctx);
-    logicalLine.appendChild(logicalLabel);
-    logicalLine.appendChild(logicalValue);
+    const logicalDiv = create('div');
+    logicalDiv.textContent = '論理式: ' + (eb.renderLogical(this.ctx) || '');
 
-    const queryLine = create('div', 'block-card__line');
-    const queryLabel = create('span', 'block-card__label');
-    queryLabel.textContent = '検索式:';
-    const queryValue = create('span');
-    queryValue.textContent = eb.renderQuery(this.ctx);
-    queryLine.appendChild(queryLabel);
-    queryLine.appendChild(queryValue);
+    const queryDiv = create('div');
+    queryDiv.textContent = '検索式: ' + (eb.renderQuery(this.ctx) || '');
 
-    body.appendChild(logicalLine);
-    body.appendChild(queryLine);
+    body.appendChild(logicalDiv);
+    body.appendChild(queryDiv);
 
     card.appendChild(header);
     card.appendChild(body);

@@ -61,12 +61,22 @@ class AppController {
   }
 
   /**
-   * textarea → parse → ブロック反映
+   * ブロックビルダー: 入力 → 単語/分類ブロックを生成
    */
   onParseClick() {
     const text = (this.elements.exprInput && this.elements.exprInput.value) || '';
-    const result = this.exprService.parseInputLines(text);
+    const kind = this._getCurrentBuilderKind(); // "word" or "class"
+
+    const result = this.exprService.parseInputLines(text, kind);
     this.showErrors(result.errors || []);
+
+    // 成功していれば入力をクリアする（好みでコメントアウト可）
+    if (!result.errors || result.errors.length === 0) {
+      if (this.elements.exprInput) {
+        this.elements.exprInput.value = '';
+      }
+    }
+
     this.renderAll();
     if (this.proxPanel) {
       this.proxPanel.onRepositoryUpdated();
@@ -74,12 +84,28 @@ class AppController {
   }
 
   /**
-   * Word リストクリック
+   * ラジオボタンからブロック種別を取得
+   * @returns {"word"|"class"}
+   * @private
+   */
+  _getCurrentBuilderKind() {
+    const radios = document.querySelectorAll('input[name="builder-kind"]');
+    for (const radio of radios) {
+      if (radio.checked) {
+        return radio.value === 'class' ? 'class' : 'word';
+      }
+    }
+    return 'word';
+  }
+
+  /**
+   * Word / Class リストクリック
    */
   onWordListClick(event) {
     const target = event.target;
-    const cardEl = target.closest('.block-card--word');
+    const cardEl = target.closest('.block-card');
     if (!cardEl) return;
+
     const id = cardEl.dataset.id;
     const block = this.repo.get(id);
     if (!block) return;
@@ -87,11 +113,13 @@ class AppController {
     // 機能1: この Word から「式入力/定義」行を生成して上部 textarea に出す
     if (target.closest('.js-word-generate-eq')) {
       event.stopPropagation();
-      this.handleGenerateEquationLineFromWord(block);
+      if (block.kind === 'WB') {
+        this.handleGenerateEquationLineFromWord(block);
+      }
       return;
     }
 
-    // 機能2: 削除
+    // 機能2: 削除（Word / Class 共通）
     if (target.closest('.js-delete-block')) {
       event.stopPropagation();
       this.handleDeleteBlock(block);
@@ -114,7 +142,7 @@ class AppController {
    */
   onWordListDblClick(event) {
     const target = event.target;
-    const cardEl = target.closest('.block-card--word');
+    const cardEl = target.closest('.block-card');
     if (!cardEl) return;
     const id = cardEl.dataset.id;
     const block = this.repo.get(id);
@@ -180,9 +208,6 @@ class AppController {
     box.classList.add('is-visible');
   }
 
-  /**
-   * 全リストを再描画
-   */
   renderAll() {
     this.renderWordsOnly();
     this.renderEquationsOnly();
@@ -201,10 +226,6 @@ class AppController {
     this.updateSelectionHighlight();
   }
 
-  /**
-   * ビルダー選択 ID をセット（ProximityPanel からも呼ばれる）
-   * @param {string[]} ids
-   */
   setBuilderSelectionIds(ids) {
     this.state.builderSelectionIds = Array.from(ids);
     this.updateSelectionHighlight();
@@ -213,9 +234,6 @@ class AppController {
     }
   }
 
-  /**
-   * builderSelectionIds に基づき .is-selected を付与
-   */
   updateSelectionHighlight() {
     const allCards = qsa('.block-card');
     const selectedSet = new Set(this.state.builderSelectionIds);
@@ -229,10 +247,6 @@ class AppController {
     }
   }
 
-  /**
-   * クリックされた block.id の選択をトグル
-   * @param {string} id
-   */
   toggleBuilderSelection(id) {
     const idx = this.state.builderSelectionIds.indexOf(id);
     if (idx >= 0) {
@@ -250,11 +264,10 @@ class AppController {
   }
 
   /**
-   * 機能1: Word ブロックから「式入力/定義」行を生成して textarea に出す
+   * Word ブロックから「式入力/定義」行を生成して textarea に出す
    *
-   * 仕様:
-   *   NB という WordBlock で queryText = "(基地局+NB+eNB)" なら
-   *   → 上部 textarea に "NB = 基地局+NB+eNB" を生成して表示
+   * NB という WordBlock で queryText = "(基地局+NB+eNB)" なら
+   * → "NB = 基地局+NB+eNB" を追加
    *
    * @param {WordBlock} wordBlock
    */
@@ -264,18 +277,15 @@ class AppController {
     if (!textarea) return;
 
     const name = wordBlock.token || wordBlock.label || wordBlock.id;
-
     let body = wordBlock.queryText || '';
     body = body.trim();
-    // ( ... ) で囲まれていれば外側のカッコを剥がして元の入力っぽく戻す
     if (body.startsWith('(') && body.endsWith(')')) {
       body = body.slice(1, -1);
     }
 
     const line = `${name} = ${body}`;
-
-    // 既存内容があれば改行追加、なければそのまま
     const current = textarea.value;
+
     if (!current.trim()) {
       textarea.value = line;
     } else {
@@ -286,10 +296,6 @@ class AppController {
     textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
   }
 
-  /**
-   * 機能2: ブロック削除（Word / Equation 共通）
-   * @param {Block} block
-   */
   handleDeleteBlock(block) {
     if (!block) return;
     const ok = window.confirm(
@@ -299,7 +305,6 @@ class AppController {
 
     this.repo.remove(block.id);
 
-    // 選択状態からも除外
     const idx = this.state.builderSelectionIds.indexOf(block.id);
     if (idx >= 0) {
       this.state.builderSelectionIds.splice(idx, 1);
@@ -310,10 +315,6 @@ class AppController {
     if (this.proxPanel) this.proxPanel.onRepositoryUpdated();
   }
 
-  /**
-   * 機能3: 編集モーダル起動（Word / Equation）
-   * @param {Block} block
-   */
   openEditModal(block) {
     if (!block) return;
     if (block.kind === 'WB') {

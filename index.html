@@ -7,47 +7,60 @@
   <!-- CSS 読み込み -->
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/layout.css" />
-  <link rel="stylesheet" href="css/layout-fix.css" />
   <link rel="stylesheet" href="css/panel.css" />
   <link rel="stylesheet" href="css/block-card.css" />
   <link rel="stylesheet" href="css/controls.css" />
   <link rel="stylesheet" href="css/state.css" />
+  <link rel="stylesheet" href="css/layout-fix.css" />
+  <!-- ブロックビルダー(上部の単語/分類切替)用 -->
+  <link rel="stylesheet" href="css/builder.css" />
 </head>
 <body>
   <div class="app">
-    <!-- 上: 式入力パネル -->
+    <!-- 上: 式入力 / ブロックビルダー -->
     <section class="panel panel--input">
       <header class="panel__header">
-        <h2>式入力 / 定義</h2>
-        <button id="btn-parse" class="btn">解析してブロックに反映</button>
+        <h2>式入力 / ブロックビルダー</h2>
       </header>
+
       <textarea
         id="expr-input"
         class="expr-input"
-        placeholder="例)&#10;NB = 基地局+NB+eNB&#10;CLS1 = H04W16/24+H04W36/00 /CP"
+        placeholder="例1) NB = 基地局+NB+eNB&#10;例2) H04W16/24+H04W36/00"
       ></textarea>
-      <div class="panel__help">
-        <p>
-          <code>10n</code> = NNn(10), <code>10c</code> = NNc(10),
-          <code>+</code> = OR, <code>*</code> = AND<br />
-          <code>/TX</code> は式出力時に自動付与されます（定義フェーズでは不要）。
-        </p>
+
+      <!-- ★ ブロックビルダー: 単語 / 分類 選択 + ボタン -->
+      <div class="builder-input-row">
+        <div class="builder-kind-select">
+          <label>
+            <input type="radio" name="builder-kind" value="word" checked />
+            単語ブロック
+          </label>
+          <label>
+            <input type="radio" name="builder-kind" value="class" />
+            分類ブロック
+          </label>
+        </div>
+        <button id="btn-parse" class="btn">
+          入力からブロック生成
+        </button>
       </div>
+
+      <div class="panel__help">
+        ・入力例 (単語): <code>NB = 基地局+NB+eNB</code> または
+        <code>基地局+NB+eNB</code>（名前なしの場合、token はランダム5文字）<br />
+        ・入力例 (分類): <code>H04W16/24+H04W36/00</code><br />
+        ・分類ブロックでは <code>*</code> や 近傍演算（<code>10n</code>, <code>10c</code>）
+        は使用できません。
+      </div>
+
       <div id="input-errors" class="error-message"></div>
     </section>
 
-    <!-- 中: Word ブロック -->
+    <!-- 中: Word / Class ブロック -->
     <section class="panel panel--words">
       <header class="panel__header">
-        <h2>Word ブロック</h2>
-        <!-- v1 では disabled のまま -->
-        <button
-          id="btn-generate-expr-from-words"
-          class="btn"
-          disabled
-        >
-          （将来）選択 Word から式生成
-        </button>
+        <h2>Word / Class ブロック</h2>
       </header>
       <div id="word-list" class="block-list block-list--words"></div>
     </section>
@@ -138,33 +151,23 @@
     </section>
   </div>
 
-  <!-- ES Modules エントリポイント（main.js を使わず、ここで完結させる） -->
-  <!-- core: AST / Block 基本クラス -->
+  <!-- JS 読み込み（グローバルクラス順） -->
   <script src="js/core/expr-node.js"></script>
   <script src="js/core/block.js"></script>
   <script src="js/core/block-repository.js"></script>
   <script src="js/core/render-context.js"></script>
 
-  <!-- parser -->
   <script src="js/parser/token.js"></script>
   <script src="js/parser/lexer.js"></script>
   <script src="js/parser/parser.js"></script>
 
-  <!-- services -->
   <script src="js/services/expression-service.js"></script>
 
-  <!-- ui -->
   <script src="js/ui/dom-utils.js"></script>
   <script src="js/ui/view-renderer.js"></script>
   <script src="js/ui/proximity-panel.js"></script>
   <script src="js/ui/app-controller.js"></script>
 
-  <!-- エントリポイント (モジュールではなく素の script) -->
-  <script>
-    window.addEventListener('DOMContentLoaded', () => {
-      const app = new AppController();
-      app.init();
-    });
-  </script>
+  <script src="js/main.js"></script>
 </body>
 </html>
