@@ -1,504 +1,176 @@
 // js/ui/app-controller.js
-// UI（DOM）とドメイン層（BlockRepository / ExpressionService）をつなぐコントローラ。
+// UI とドメイン層をつなぐアプリケーションコントローラ（グローバル版）
 
-// import { qs, qsa } from './dom-utils.js';
-// import { BlockRepository } from '../core/block-repository.js';
-// import { RenderContext } from '../core/render-context.js';
-// import { ExpressionService } from '../services/expression-service.js';
-// import { ViewRenderer } from './view-renderer.js';
-// import { ProximityPanel } from './proximity-panel.js';
-
-// import {
-//   EquationBlock,
-//   WordBlock
-// } from '../core/block.js';
-
-// import {
-//   BlockRefNode,
-//   LogicalNode,
-//   ProximityNode,
-//   SimultaneousProximityNode
-// } from '../core/expr-node.js';
-
-/** export class*/ class AppController {
+class AppController {
   constructor() {
-    // --- ドメイン層の準備 ---
-    /** @type {BlockRepository} */
     this.repo = new BlockRepository();
-
-    /** @type {RenderContext} */
     this.ctx = new RenderContext(this.repo);
-
-    /** @type {ExpressionService} */
     this.exprService = new ExpressionService(this.repo);
-
-    /** @type {ViewRenderer} */
     this.view = new ViewRenderer(this.repo, this.ctx);
+    this.proxPanel = null;
 
-    /** @type {ProximityPanel} */
-    this.proximityPanel = null;
-
-    // --- DOM 要素参照 ---
     this.elements = {
       exprInput: null,
       parseButton: null,
       wordList: null,
       equationList: null,
-      errorBox: null,
-      btnGenerateExprFromWords: null,
-      builderPanel: null
+      errorBox: null
     };
 
-    // --- UI 状態 ---
+    // ビルダー用の選択 ID（Word / Equation 共通、最大3）
     this.state = {
-      // 素材として選択されているブロック ID の順序
-      selectedSourceIds: /** @type {string[]} */ ([]),
-      // 各 ID の種別（"WB"|"EB"）
-      selectedSourceKinds: /** @type {Map<string, string>} */ (new Map())
+      builderSelectionIds: []
     };
-
-    // this を束縛したハンドラ
-    this.onParseClick = this.onParseClick.bind(this);
-    this.onEquationListClick = this.onEquationListClick.bind(this);
-    this.onWordListClick = this.onWordListClick.bind(this);
-    this.onWordListDblClick = this.onWordListDblClick.bind(this);
-
-    // ProximityPanel からのコールバック用
-    this.handleBuildL1 = this.handleBuildL1.bind(this);
-    this.handleBuildProx2 = this.handleBuildProx2.bind(this);
-    this.handleBuildProx3 = this.handleBuildProx3.bind(this);
-    this.handleBuildOr = this.handleBuildOr.bind(this);
-    this.handleBuildAnd = this.handleBuildAnd.bind(this);
-    this.handleSelectionOrderChanged =
-      this.handleSelectionOrderChanged.bind(this);
-    this.handleSelectionItemRemoved =
-      this.handleSelectionItemRemoved.bind(this);
   }
 
-  /**
-   * DOM 要素を取得し、イベントバインドと初期描画を行う。
-   */
   init() {
-    // --- DOM 要素取得 ---
     this.elements.exprInput = qs('#expr-input');
     this.elements.parseButton = qs('#btn-parse');
     this.elements.wordList = qs('#word-list');
     this.elements.equationList = qs('#equation-list');
     this.elements.errorBox = qs('#input-errors');
-    this.elements.btnGenerateExprFromWords = qs(
-      '#btn-generate-expr-from-words'
-    );
-    this.elements.builderPanel = qs('#builder-panel');
 
-    if (
-      !this.elements.exprInput ||
-      !this.elements.parseButton ||
-      !this.elements.wordList ||
-      !this.elements.equationList ||
-      !this.elements.errorBox ||
-      !this.elements.builderPanel
-    ) {
-      console.error('必要な DOM 要素の一部が見つかりません。');
-      return;
+    this.proxPanel = new ProximityPanel(this);
+    this.proxPanel.init();
+
+    this.bindEvents();
+    this.renderAll();
+  }
+
+  bindEvents() {
+    if (this.elements.parseButton) {
+      this.elements.parseButton.addEventListener('click', () =>
+        this.onParseClick()
+      );
     }
 
-    // ProximityPanel の初期化
-    this.proximityPanel = new ProximityPanel(this.elements.builderPanel);
-    this.proximityPanel.bindHandlers({
-      onBuildL1: this.handleBuildL1,
-      onBuildProx2: this.handleBuildProx2,
-      onBuildProx3: this.handleBuildProx3,
-      onBuildOr: this.handleBuildOr,
-      onBuildAnd: this.handleBuildAnd,
-      onOrderChanged: this.handleSelectionOrderChanged,
-      onItemRemoved: this.handleSelectionItemRemoved
-    });
+    if (this.elements.wordList) {
+      this.elements.wordList.addEventListener('click', (e) =>
+        this.onWordListClick(e)
+      );
+      this.elements.wordList.addEventListener('dblclick', (e) =>
+        this.onWordListDblClick(e)
+      );
+    }
 
-    // --- イベントバインド ---
-    this.bindEvents();
-
-    // --- 初期描画 ---
-    this.renderAll();
-    this.updateBuilderButtonsState();
+    if (this.elements.equationList) {
+      this.elements.equationList.addEventListener('click', (e) =>
+        this.onEquationListClick(e)
+      );
+    }
   }
 
   /**
-   * ボタン・リストへのイベントリスナーを登録する。
-   * @private
-   */
-  bindEvents() {
-    this.elements.parseButton.addEventListener('click', this.onParseClick);
-
-    // Equation リスト: クリックで選択 / Word 再分割ボタン処理
-    this.elements.equationList.addEventListener(
-      'click',
-      this.onEquationListClick
-    );
-
-    // Word リスト: クリックで選択トグル、ダブルクリックで token 挿入
-    this.elements.wordList.addEventListener('click', this.onWordListClick);
-    this.elements.wordList.addEventListener(
-      'dblclick',
-      this.onWordListDblClick
-    );
-  }
-
-  // =========================================================
-  // イベントハンドラ
-  // =========================================================
-
-  /**
-   * 「解析してブロックに反映」クリック時。
+   * textarea → parse → ブロック反映
    */
   onParseClick() {
-    const text = this.elements.exprInput.value || '';
+    const text = (this.elements.exprInput && this.elements.exprInput.value) || '';
     const result = this.exprService.parseInputLines(text);
-
+    this.showErrors(result.errors || []);
     this.renderAll();
-
-    this.showErrors(result.errors);
-    // 定義が変わったので選択状態はリセット
-    this.state.selectedSourceIds = [];
-    this.state.selectedSourceKinds.clear();
-    this.updateSelectionUi();
-  }
-
-  /**
-   * Equation カードのクリック（選択・Word再分割）を処理する。
-   * @param {MouseEvent} event
-   */
-  onEquationListClick(event) {
-    const target = /** @type {HTMLElement} */ (event.target);
-
-    // Word 再生成ボタンが押された場合
-    if (target.classList.contains('js-decompose-words')) {
-      const card = target.closest('.block-card');
-      if (!card) return;
-      const ebId = card.dataset.id;
-      if (!ebId) return;
-
-      this.exprService.regenerateWordsFromEquation(ebId);
-      this.renderWordsOnly();
-      // selection は維持
-      this.updateSelectionUi();
-      return;
-    }
-
-    // カード本体のクリックで素材選択トグル
-    const card = target.closest('.block-card');
-    if (!card || !card.dataset.id) return;
-    const ebId = card.dataset.id;
-
-    this.toggleSelectSource(ebId, 'EB');
-    this.updateSelectionUi();
-
-    // 選択された Equation の論理式を textarea にロード
-    const block = this.repo.get(ebId);
-    if (block && block instanceof EquationBlock) {
-      const logical = block.renderLogical(this.ctx);
-      this.elements.exprInput.value = logical;
+    if (this.proxPanel) {
+      this.proxPanel.onRepositoryUpdated();
     }
   }
 
   /**
-   * Word カードのクリックによる素材選択トグル。
-   * @param {MouseEvent} event
+   * Word リストクリック
    */
   onWordListClick(event) {
-    const target = /** @type {HTMLElement} */ (event.target);
-    const card = target.closest('.block-card');
-    if (!card || !card.dataset.id) return;
-    const id = card.dataset.id;
+    const target = event.target;
+    const cardEl = target.closest('.block-card--word');
+    if (!cardEl) return;
+    const id = cardEl.dataset.id;
+    const block = this.repo.get(id);
+    if (!block) return;
 
-    this.toggleSelectSource(id, 'WB');
-    this.updateSelectionUi();
+    // 機能1: この Word から「式入力/定義」行を生成して上部 textarea に出す
+    if (target.closest('.js-word-generate-eq')) {
+      event.stopPropagation();
+      this.handleGenerateEquationLineFromWord(block);
+      return;
+    }
+
+    // 機能2: 削除
+    if (target.closest('.js-delete-block')) {
+      event.stopPropagation();
+      this.handleDeleteBlock(block);
+      return;
+    }
+
+    // 機能3: 編集
+    if (target.closest('.js-edit-block')) {
+      event.stopPropagation();
+      this.openEditModal(block);
+      return;
+    }
+
+    // それ以外のクリック → ビルダー用の素材選択トグル
+    this.toggleBuilderSelection(id);
   }
 
   /**
-   * Word カードのダブルクリックで、その token を textarea のカーソル位置に挿入する。
-   * @param {MouseEvent} event
+   * Word リスト ダブルクリック → token を textarea に挿入
    */
   onWordListDblClick(event) {
-    const target = /** @type {HTMLElement} */ (event.target);
-    const card = target.closest('.block-card');
-    if (!card || !card.dataset.id) return;
-    const id = card.dataset.id;
-
+    const target = event.target;
+    const cardEl = target.closest('.block-card--word');
+    if (!cardEl) return;
+    const id = cardEl.dataset.id;
     const block = this.repo.get(id);
-    if (!block || !(block instanceof WordBlock)) return;
-
-    this.insertTokenAtCursor(block.token || block.label || '');
-  }
-
-  // =========================================================
-  // ProximityPanel からのコールバック
-  // =========================================================
-
-  /**
-   * 1要素式生成。
-   * @param {string[]} orderIds
-   * @param {{mode: "n"|"c", k: number}} opts
-   */
-  handleBuildL1(orderIds, opts) {
-    if (!orderIds || orderIds.length !== 1) {
-      this.proximityPanel.showMessage(
-        '1要素式には素材がちょうど 1 個必要です。',
-        'error'
-      );
-      return;
-    }
-    const id = orderIds[0];
-
-    try {
-      const expr = this._buildExprFromSourceId(id);
-      const label = 'L1式 ' + id;
-      const ebId = this.repo.findOrCreateIdForLabel(label, 'EB');
-      const eb = new EquationBlock(ebId, label, expr);
-      this.repo.upsert(eb);
-
-      this.renderEquationsOnly();
-      this.updateSelectionUi();
-      this.proximityPanel.showMessage('1要素式を作成しました。', 'info');
-    } catch (e) {
-      const msg = e && e.message ? e.message : String(e);
-      this.proximityPanel.showMessage(
-        '1要素式の作成に失敗しました: ' + msg,
-        'error'
-      );
-    }
+    if (!block || block.kind !== 'WB') return;
+    this.insertTokenAtCursor(block.token);
   }
 
   /**
-   * 2近傍式生成。
-   * @param {string[]} orderIds
-   * @param {{mode: "n"|"c", k: number}} opts
+   * Equation リストクリック
    */
-  handleBuildProx2(orderIds, opts) {
-    if (!orderIds || orderIds.length !== 2) {
-      this.proximityPanel.showMessage(
-        '2近傍式には素材がちょうど 2 個必要です。',
-        'error'
-      );
+  onEquationListClick(event) {
+    const target = event.target;
+    const cardEl = target.closest('.block-card--equation');
+    if (!cardEl) return;
+    const id = cardEl.dataset.id;
+    const block = this.repo.get(id);
+    if (!block) return;
+
+    // 語再生成
+    if (target.closest('.js-decompose-words')) {
+      event.stopPropagation();
+      this.exprService.regenerateWordsFromEquation(id);
+      this.renderWordsOnly();
+      if (this.proxPanel) this.proxPanel.onRepositoryUpdated();
       return;
     }
 
-    try {
-      const left = this._buildExprFromSourceId(orderIds[0]);
-      const right = this._buildExprFromSourceId(orderIds[1]);
-      const mode = opts.mode === 'c' ? 'NNc' : 'NNn';
-      const k = opts.k;
-
-      const proxNode = new ProximityNode(mode, k, left, right);
-
-      const label =
-        'Prox2 ' + orderIds[0] + ' ' + mode + '(' + k + ') ' + orderIds[1];
-      const ebId = this.repo.findOrCreateIdForLabel(label, 'EB');
-      const eb = new EquationBlock(ebId, label, proxNode);
-      this.repo.upsert(eb);
-
-      this.renderEquationsOnly();
-      this.updateSelectionUi();
-      this.proximityPanel.showMessage('2近傍式を作成しました。', 'info');
-    } catch (e) {
-      const msg = e && e.message ? e.message : String(e);
-      this.proximityPanel.showMessage(
-        '2近傍式の作成に失敗しました: ' + msg,
-        'error'
-      );
-    }
-  }
-
-  /**
-   * 3近傍式生成（mode は常に NNn）。
-   * @param {string[]} orderIds
-   * @param {{mode: "n"|"c", k: number}} opts
-   */
-  handleBuildProx3(orderIds, opts) {
-    if (!orderIds || orderIds.length !== 3) {
-      this.proximityPanel.showMessage(
-        '3近傍式には素材がちょうど 3 個必要です。',
-        'error'
-      );
+    // 削除
+    if (target.closest('.js-delete-block')) {
+      event.stopPropagation();
+      this.handleDeleteBlock(block);
       return;
     }
 
-    try {
-      const exprs = orderIds.map((id) => this._buildExprFromSourceId(id));
-      const k = opts.k; // mode は強制 NNn
-      const proxNode = new SimultaneousProximityNode(k, exprs);
-
-      const label =
-        'Prox3 {' + orderIds.join(',') + '}, NNn(' + k + ')';
-      const ebId = this.repo.findOrCreateIdForLabel(label, 'EB');
-      const eb = new EquationBlock(ebId, label, proxNode);
-      this.repo.upsert(eb);
-
-      this.renderEquationsOnly();
-      this.updateSelectionUi();
-      this.proximityPanel.showMessage('3近傍式を作成しました。', 'info');
-    } catch (e) {
-      const msg = e && e.message ? e.message : String(e);
-      this.proximityPanel.showMessage(
-        '3近傍式の作成に失敗しました: ' + msg,
-        'error'
-      );
-    }
-  }
-
-  /**
-   * OR 結合式生成（E1 + E2 (+ E3)）。
-   * @param {string[]} orderIds
-   */
-  handleBuildOr(orderIds) {
-    if (!orderIds || orderIds.length < 2) {
-      this.proximityPanel.showMessage(
-        'OR 結合には素材が 2 個以上必要です。',
-        'error'
-      );
+    // 編集
+    if (target.closest('.js-edit-block')) {
+      event.stopPropagation();
+      this.openEditModal(block);
       return;
     }
 
-    try {
-      const exprs = orderIds.map((id) => this._buildExprFromSourceId(id));
-      const orNode = new LogicalNode('+', exprs);
-
-      const label = 'OR {' + orderIds.join('+') + '}';
-      const ebId = this.repo.findOrCreateIdForLabel(label, 'EB');
-      const eb = new EquationBlock(ebId, label, orNode);
-      this.repo.upsert(eb);
-
-      this.renderEquationsOnly();
-      this.updateSelectionUi();
-      this.proximityPanel.showMessage('OR 結合式を作成しました。', 'info');
-    } catch (e) {
-      const msg = e && e.message ? e.message : String(e);
-      this.proximityPanel.showMessage(
-        'OR 結合式の作成に失敗しました: ' + msg,
-        'error'
-      );
+    // それ以外のクリック → 素材選択トグル & 論理式を textarea に表示（参照用）
+    this.toggleBuilderSelection(id);
+    if (this.elements.exprInput && block.renderLogical) {
+      this.elements.exprInput.value = block.renderLogical(this.ctx);
     }
   }
 
   /**
-   * AND 結合式生成（E1 * E2 (* E3)）。
-   * @param {string[]} orderIds
-   */
-  handleBuildAnd(orderIds) {
-    if (!orderIds || orderIds.length < 2) {
-      this.proximityPanel.showMessage(
-        'AND 結合には素材が 2 個以上必要です。',
-        'error'
-      );
-      return;
-    }
-
-    try {
-      const exprs = orderIds.map((id) => this._buildExprFromSourceId(id));
-      const andNode = new LogicalNode('*', exprs);
-
-      const label = 'AND {' + orderIds.join('*') + '}';
-      const ebId = this.repo.findOrCreateIdForLabel(label, 'EB');
-      const eb = new EquationBlock(ebId, label, andNode);
-      this.repo.upsert(eb);
-
-      this.renderEquationsOnly();
-      this.updateSelectionUi();
-      this.proximityPanel.showMessage('AND 結合式を作成しました。', 'info');
-    } catch (e) {
-      const msg = e && e.message ? e.message : String(e);
-      this.proximityPanel.showMessage(
-        'AND 結合式の作成に失敗しました: ' + msg,
-        'error'
-      );
-    }
-  }
-
-  /**
-   * ProximityPanel からの順序変更通知。
-   * @param {string[]} orderIds
-   */
-  handleSelectionOrderChanged(orderIds) {
-    // state の順序を置き換え
-    this.state.selectedSourceIds = orderIds.slice();
-    this.updateSelectionUi();
-  }
-
-  /**
-   * ProximityPanel からの削除通知。
-   * @param {string} id
-   */
-  handleSelectionItemRemoved(id) {
-    const idx = this.state.selectedSourceIds.indexOf(id);
-    if (idx >= 0) {
-      this.state.selectedSourceIds.splice(idx, 1);
-      this.state.selectedSourceKinds.delete(id);
-      this.updateSelectionUi();
-    }
-  }
-
-  // =========================================================
-  // ユーティリティ / 選択管理
-  // =========================================================
-
-  /**
-   * 素材選択トグル。
-   * @param {string} id
-   * @param {"WB"|"EB"} kind
-   */
-  toggleSelectSource(id, kind) {
-    const ids = this.state.selectedSourceIds;
-    const kinds = this.state.selectedSourceKinds;
-    const idx = ids.indexOf(id);
-
-    if (idx >= 0) {
-      // 選択解除
-      ids.splice(idx, 1);
-      kinds.delete(id);
-    } else {
-      // 新規選択（最大 3 個）
-      if (ids.length >= 3) {
-        if (this.proximityPanel) {
-          this.proximityPanel.showMessage(
-            '素材は最大 3 個まで選択できます。',
-            'info'
-          );
-        }
-        return;
-      }
-      ids.push(id);
-      kinds.set(id, kind);
-    }
-  }
-
-  /**
-   * exprInput の選択位置に token を挿入し、カーソルをその後ろに移動する。
-   * @param {string} token
-   */
-  insertTokenAtCursor(token) {
-    const textarea = this.elements.exprInput;
-    textarea.focus();
-
-    const start = textarea.selectionStart || 0;
-    const end = textarea.selectionEnd || 0;
-
-    const before = textarea.value.slice(0, start);
-    const after = textarea.value.slice(end);
-
-    const insertText = token;
-
-    textarea.value = before + insertText + after;
-
-    const newPos = start + insertText.length;
-    textarea.selectionStart = newPos;
-    textarea.selectionEnd = newPos;
-  }
-
-  /**
-   * エラー配列を結合して input-errors に表示する（なければクリア）。
+   * パースエラー表示
    * @param {string[]} errors
    */
   showErrors(errors) {
     const box = this.elements.errorBox;
+    if (!box) return;
+
     if (!errors || errors.length === 0) {
       box.textContent = '';
       box.classList.remove('is-visible');
@@ -509,157 +181,407 @@
   }
 
   /**
-   * Word リストと Equation リストを両方再描画する。
+   * 全リストを再描画
    */
   renderAll() {
     this.renderWordsOnly();
     this.renderEquationsOnly();
+    this.updateSelectionHighlight();
   }
 
-  /**
-   * Word リストだけ描画。
-   */
   renderWordsOnly() {
+    if (!this.elements.wordList) return;
     this.view.renderWords(this.elements.wordList);
-    this.applySelectionToCards();
+    this.updateSelectionHighlight();
   }
 
-  /**
-   * Equation リストだけ描画。
-   */
   renderEquationsOnly() {
+    if (!this.elements.equationList) return;
     this.view.renderEquations(this.elements.equationList);
-    this.applySelectionToCards();
+    this.updateSelectionHighlight();
   }
 
   /**
-   * state.selectedSourceIds に基づいて Word / Equation カードの .is-selected を付け直す。
-   * さらに ProximityPanel 側の素材一覧・ボタン状態も更新。
-   * @private
+   * ビルダー選択 ID をセット（ProximityPanel からも呼ばれる）
+   * @param {string[]} ids
    */
-  updateSelectionUi() {
-    this.applySelectionToCards();
-
-    // ProximityPanel に選択情報を渡す
-    if (this.proximityPanel) {
-      const summaries = this.state.selectedSourceIds.map((id) => {
-        const block = this.repo.get(id);
-        let kind = this.state.selectedSourceKinds.get(id);
-        if (!kind && block && typeof block.kind === 'string') {
-          kind = block.kind;
-        }
-        const label = block ? block.label || id : id;
-        return {
-          id: id,
-          kind: /** @type {"WB"|"EB"} */ (kind === 'EB' ? 'EB' : 'WB'),
-          label: label
-        };
-      });
-      this.proximityPanel.updateSelection(summaries);
-      this.updateBuilderButtonsState();
+  setBuilderSelectionIds(ids) {
+    this.state.builderSelectionIds = Array.from(ids);
+    this.updateSelectionHighlight();
+    if (this.proxPanel) {
+      this.proxPanel.setSelectionIds(this.state.builderSelectionIds);
     }
   }
 
   /**
-   * カード側の .is-selected を更新。
-   * @private
+   * builderSelectionIds に基づき .is-selected を付与
    */
-  applySelectionToCards() {
-    const selected = new Set(this.state.selectedSourceIds);
-
-    const wordCards = qsa('.block-card--word', this.elements.wordList);
-    const eqCards = qsa(
-      '.block-card--equation',
-      this.elements.equationList
-    );
-
-    wordCards.forEach((card) => {
+  updateSelectionHighlight() {
+    const allCards = qsa('.block-card');
+    const selectedSet = new Set(this.state.builderSelectionIds);
+    for (const card of allCards) {
       const id = card.dataset.id;
-      if (id && selected.has(id)) {
+      if (selectedSet.has(id)) {
         card.classList.add('is-selected');
       } else {
         card.classList.remove('is-selected');
       }
-    });
-
-    eqCards.forEach((card) => {
-      const id = card.dataset.id;
-      if (id && selected.has(id)) {
-        card.classList.add('is-selected');
-      } else {
-        card.classList.remove('is-selected');
-      }
-    });
+    }
   }
 
   /**
-   * Builder の各ボタンの有効/無効を更新。
-   * @private
+   * クリックされた block.id の選択をトグル
+   * @param {string} id
    */
-  updateBuilderButtonsState() {
-    if (!this.proximityPanel) return;
+  toggleBuilderSelection(id) {
+    const idx = this.state.builderSelectionIds.indexOf(id);
+    if (idx >= 0) {
+      this.state.builderSelectionIds.splice(idx, 1);
+    } else {
+      if (this.state.builderSelectionIds.length >= 3) {
+        if (this.proxPanel) {
+          this.proxPanel.showMessage('素材は最大3個までです。', 'error');
+        }
+        return;
+      }
+      this.state.builderSelectionIds.push(id);
+    }
+    this.setBuilderSelectionIds(this.state.builderSelectionIds);
+  }
 
-    const n = this.state.selectedSourceIds.length;
+  /**
+   * 機能1: Word ブロックから「式入力/定義」行を生成して textarea に出す
+   *
+   * 仕様:
+   *   NB という WordBlock で queryText = "(基地局+NB+eNB)" なら
+   *   → 上部 textarea に "NB = 基地局+NB+eNB" を生成して表示
+   *
+   * @param {WordBlock} wordBlock
+   */
+  handleGenerateEquationLineFromWord(wordBlock) {
+    if (!wordBlock || wordBlock.kind !== 'WB') return;
+    const textarea = this.elements.exprInput;
+    if (!textarea) return;
 
-    const flags = {
-      l1: n === 1,
-      prox2: n === 2,
-      prox3: n === 3,
-      or: n >= 2,
-      and: n >= 2
+    const name = wordBlock.token || wordBlock.label || wordBlock.id;
+
+    let body = wordBlock.queryText || '';
+    body = body.trim();
+    // ( ... ) で囲まれていれば外側のカッコを剥がして元の入力っぽく戻す
+    if (body.startsWith('(') && body.endsWith(')')) {
+      body = body.slice(1, -1);
+    }
+
+    const line = `${name} = ${body}`;
+
+    // 既存内容があれば改行追加、なければそのまま
+    const current = textarea.value;
+    if (!current.trim()) {
+      textarea.value = line;
+    } else {
+      textarea.value = current.replace(/\s*$/, '') + '\n' + line;
+    }
+
+    textarea.focus();
+    textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+  }
+
+  /**
+   * 機能2: ブロック削除（Word / Equation 共通）
+   * @param {Block} block
+   */
+  handleDeleteBlock(block) {
+    if (!block) return;
+    const ok = window.confirm(
+      `ブロックを削除しますか？\n${block.kind}: ${block.label || block.id}`
+    );
+    if (!ok) return;
+
+    this.repo.remove(block.id);
+
+    // 選択状態からも除外
+    const idx = this.state.builderSelectionIds.indexOf(block.id);
+    if (idx >= 0) {
+      this.state.builderSelectionIds.splice(idx, 1);
+    }
+    this.setBuilderSelectionIds(this.state.builderSelectionIds);
+
+    this.renderAll();
+    if (this.proxPanel) this.proxPanel.onRepositoryUpdated();
+  }
+
+  /**
+   * 機能3: 編集モーダル起動（Word / Equation）
+   * @param {Block} block
+   */
+  openEditModal(block) {
+    if (!block) return;
+    if (block.kind === 'WB') {
+      this.openEditModalForWord(block);
+    } else if (block.kind === 'EB') {
+      this.openEditModalForEquation(block);
+    } else {
+      alert('この種別のブロックは編集未対応です: ' + block.kind);
+    }
+  }
+
+  /**
+   * モーダル骨格生成
+   */
+  createModalSkeleton(titleText) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-backdrop';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+
+    const header = document.createElement('div');
+    header.className = 'modal__header';
+
+    const title = document.createElement('div');
+    title.className = 'modal__title';
+    title.textContent = titleText;
+
+    const btnClose = document.createElement('button');
+    btnClose.type = 'button';
+    btnClose.className = 'btn-small modal__close';
+    btnClose.textContent = '×';
+
+    header.appendChild(title);
+    header.appendChild(btnClose);
+
+    const body = document.createElement('div');
+    body.className = 'modal__body';
+
+    const footer = document.createElement('div');
+    footer.className = 'modal__footer';
+
+    const error = document.createElement('div');
+    error.className = 'modal__error';
+
+    modal.appendChild(header);
+    modal.appendChild(body);
+    modal.appendChild(error);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    const close = () => {
+      document.body.removeChild(overlay);
     };
 
-    this.proximityPanel.setOperationEnabled(flags);
+    btnClose.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
 
-    if (n === 3) {
-      // 3近傍では c を禁止
-      this.proximityPanel.setProximityModeOptions({
-        allowC: false,
-        allowN: true
-      });
-    } else if (n === 2) {
-      // 2近傍では c / n 両方許可
-      this.proximityPanel.setProximityModeOptions({
-        allowC: true,
-        allowN: true
-      });
-    } else {
-      // それ以外はとりあえず両方許可
-      this.proximityPanel.setProximityModeOptions({
-        allowC: true,
-        allowN: true
-      });
-    }
+    return { overlay, modal, header, body, footer, error, close };
   }
 
   /**
-   * 素材 ID から式の AST ノードを構築する。
-   * - WordBlock → BlockRefNode(id)
-   * - EquationBlock → root.clone()
-   * @param {string} id
-   * @returns {import('../core/expr-node.js').ExprNode}
-   * @private
+   * WordBlock 編集モーダル
+   * @param {WordBlock} word
    */
-  _buildExprFromSourceId(id) {
-    const block = this.repo.get(id);
-    if (!block) {
-      throw new Error('ブロックが見つかりません: ' + id);
-    }
+  openEditModalForWord(word) {
+    const { body, footer, error, close } = this.createModalSkeleton(
+      'Word ブロックを編集'
+    );
 
-    if (block.kind === 'WB' || block instanceof WordBlock) {
-      // WordBlock は BlockRef として参照（レンダリング時に queryText 展開）
-      return new BlockRefNode(block.id);
-    }
+    // ラベル
+    const fieldLabel = document.createElement('div');
+    fieldLabel.className = 'modal__field';
+    const labelLabel = document.createElement('label');
+    labelLabel.className = 'modal__label';
+    labelLabel.textContent = 'ラベル';
+    const labelInput = document.createElement('input');
+    labelInput.type = 'text';
+    labelInput.className = 'modal__input';
+    labelInput.value = word.label || '';
+    fieldLabel.appendChild(labelLabel);
+    fieldLabel.appendChild(labelInput);
 
-    if (block.kind === 'EB' || block instanceof EquationBlock) {
-      if (!block.root || typeof block.root.clone !== 'function') {
-        throw new Error('式ブロックに有効な AST がありません: ' + id);
+    // token は編集すると参照が壊れるので読み取り専用表示のみ
+    const fieldToken = document.createElement('div');
+    fieldToken.className = 'modal__field';
+    const tokenLabel = document.createElement('label');
+    tokenLabel.className = 'modal__label';
+    tokenLabel.textContent = 'token (参照用)';
+    const tokenView = document.createElement('div');
+    tokenView.className = 'modal__readonly';
+    tokenView.textContent = word.token;
+    fieldToken.appendChild(tokenLabel);
+    fieldToken.appendChild(tokenView);
+
+    // queryText（検索式）: ユーザが編集するのはここ
+    const fieldQuery = document.createElement('div');
+    fieldQuery.className = 'modal__field';
+    const queryLabel = document.createElement('label');
+    queryLabel.className = 'modal__label';
+    queryLabel.textContent = '検索式 (queryText)';
+    const queryInput = document.createElement('textarea');
+    queryInput.className = 'modal__textarea';
+    queryInput.value = word.queryText || '';
+    fieldQuery.appendChild(queryLabel);
+    fieldQuery.appendChild(queryInput);
+
+    body.appendChild(fieldLabel);
+    body.appendChild(fieldToken);
+    body.appendChild(fieldQuery);
+
+    const btnCancel = document.createElement('button');
+    btnCancel.type = 'button';
+    btnCancel.className = 'btn';
+    btnCancel.textContent = 'キャンセル';
+
+    const btnSave = document.createElement('button');
+    btnSave.type = 'button';
+    btnSave.className = 'btn';
+    btnSave.textContent = '保存';
+
+    footer.appendChild(btnCancel);
+    footer.appendChild(btnSave);
+
+    btnCancel.addEventListener('click', () => close());
+    btnSave.addEventListener('click', () => {
+      const newLabel = labelInput.value.trim();
+      const newQuery = queryInput.value.trim();
+      if (!newLabel) {
+        error.textContent = 'ラベルは必須です。';
+        return;
       }
-      return block.root.clone();
-    }
+      word.label = newLabel;
+      word.updateQueryText(newQuery);
+      this.repo.upsert(word);
+      this.renderWordsOnly();
+      if (this.proxPanel) this.proxPanel.onRepositoryUpdated();
+      close();
+    });
+  }
 
-    throw new Error('この種別のブロックは素材として使用できません: ' + block.kind);
+  /**
+   * EquationBlock 編集モーダル
+   *
+   * 仕様:
+   *  - 論理式: 内部表現なので参照用に表示のみ（編集不可）
+   *  - 検索式: AST を Word 展開した本体（/TX, [] なし）を編集対象とする
+   *
+   * @param {EquationBlock} eb
+   */
+  openEditModalForEquation(eb) {
+    const { body, footer, error, close } = this.createModalSkeleton(
+      '式ブロックを編集'
+    );
+
+    // ラベル
+    const fieldLabel = document.createElement('div');
+    fieldLabel.className = 'modal__field';
+    const labelLabel = document.createElement('label');
+    labelLabel.className = 'modal__label';
+    labelLabel.textContent = 'ラベル';
+    const labelInput = document.createElement('input');
+    labelInput.type = 'text';
+    labelInput.className = 'modal__input';
+    labelInput.value = eb.label || '';
+    fieldLabel.appendChild(labelLabel);
+    fieldLabel.appendChild(labelInput);
+
+    // 論理式 (参照用・編集不可)
+    const fieldLogical = document.createElement('div');
+    fieldLogical.className = 'modal__field';
+    const logicalLabel = document.createElement('label');
+    logicalLabel.className = 'modal__label';
+    logicalLabel.textContent = '論理式 (内部表現 / 参照用)';
+    const logicalView = document.createElement('div');
+    logicalView.className = 'modal__readonly';
+    logicalView.textContent = eb.renderLogical(this.ctx);
+    fieldLogical.appendChild(logicalLabel);
+    fieldLogical.appendChild(logicalView);
+
+    // 検索式 (編集可) : ASTから WordBlock を展開した本体 (/TX は付けない)
+    const fieldExpr = document.createElement('div');
+    fieldExpr.className = 'modal__field';
+    const exprLabel = document.createElement('label');
+    exprLabel.className = 'modal__label';
+    exprLabel.textContent = '検索式 (編集可 / /TX は自動付与)';
+    const exprInput = document.createElement('textarea');
+    exprInput.className = 'modal__textarea';
+    let bodyText = '';
+    if (eb.root && typeof eb.root.renderQuery === 'function') {
+      bodyText = eb.root.renderQuery(this.ctx) || '';
+    }
+    exprInput.value = bodyText;
+    fieldExpr.appendChild(exprLabel);
+    fieldExpr.appendChild(exprInput);
+
+    body.appendChild(fieldLabel);
+    body.appendChild(fieldLogical);
+    body.appendChild(fieldExpr);
+
+    const btnCancel = document.createElement('button');
+    btnCancel.type = 'button';
+    btnCancel.className = 'btn';
+    btnCancel.textContent = 'キャンセル';
+
+    const btnSave = document.createElement('button');
+    btnSave.type = 'button';
+    btnSave.className = 'btn';
+    btnSave.textContent = '保存';
+
+    footer.appendChild(btnCancel);
+    footer.appendChild(btnSave);
+
+    btnCancel.addEventListener('click', () => close());
+    btnSave.addEventListener('click', () => {
+      const newLabel = labelInput.value.trim();
+      const exprText = exprInput.value.trim();
+      if (!exprText) {
+        error.textContent = '検索式が空です。';
+        return;
+      }
+      try {
+        // 検索式（内部表現）は /TX や [] を含まない前提でパースする
+        const lexer = new Lexer(exprText);
+        const parser = new Parser(lexer);
+        const exprNode = parser.parseExpr(); // 式部だけ解析
+
+        eb.setRoot(exprNode);
+        if (newLabel) eb.label = newLabel;
+        this.repo.upsert(eb);
+        this.renderEquationsOnly();
+        if (this.proxPanel) this.proxPanel.onRepositoryUpdated();
+        close();
+      } catch (e) {
+        error.textContent =
+          '検索式の解析に失敗しました (/TX や [] は不要です): ' +
+          (e.message || e);
+      }
+    });
+  }
+
+  /**
+   * textarea のカーソル位置に token を挿入
+   * @param {string} token
+   */
+  insertTokenAtCursor(token) {
+    const textarea = this.elements.exprInput;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const value = textarea.value;
+
+    const before = value.slice(0, start);
+    const after = value.slice(end);
+
+    const insertText = token;
+    textarea.value = before + insertText + after;
+
+    const newPos = before.length + insertText.length;
+    textarea.selectionStart = textarea.selectionEnd = newPos;
+    textarea.focus();
   }
 }
 
-window.AppController  = AppController
+// グローバル公開
+window.AppController = AppController;

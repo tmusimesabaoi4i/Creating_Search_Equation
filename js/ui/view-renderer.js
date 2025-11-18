@@ -1,18 +1,13 @@
 // js/ui/view-renderer.js
-// BlockRepository の状態を HTML DOM に描画する「描画専用」クラス。
+// BlockRepository の内容を DOM に描画するだけの責務
 
-// import { create, clearChildren } from './dom-utils.js';
-// import { EquationBlock, WordBlock } from '../core/block.js';
+// 前提: dom-utils.js で window.create / window.clearChildren が定義済み
+// 前提: BlockRepository / RenderContext / WordBlock / EquationBlock 等は global
 
-/**
- * 描画専用クラス。
- * - repo: BlockRepository
- * - ctx : RenderContext
- */
-/** export class*/ class ViewRenderer {
+class ViewRenderer {
   /**
-   * @param {import('../core/block-repository.js').BlockRepository} blockRepository
-   * @param {import('../core/render-context.js').RenderContext} renderContext
+   * @param {BlockRepository} blockRepository
+   * @param {RenderContext} renderContext
    */
   constructor(blockRepository, renderContext) {
     this.repo = blockRepository;
@@ -20,170 +15,161 @@
   }
 
   /**
-   * WordBlock の一覧を Word カードとして containerEl に描画する。
-   * @param {HTMLElement} containerEl - #word-list
+   * WordBlock 一覧を描画
+   * @param {HTMLElement} containerEl
    */
   renderWords(containerEl) {
     clearChildren(containerEl);
-
-    /** @type {WordBlock[]} */
     const words = this.repo.getAllWords();
-
-    // 表示順はラベル昇順
-    words.sort((a, b) => (a.label || '').localeCompare(b.label || '', 'ja'));
-
     for (const wb of words) {
-      const card = this._renderWordCard(wb);
-      containerEl.appendChild(card);
+      containerEl.appendChild(this.renderWordCard(wb));
     }
   }
 
   /**
-   * EquationBlock の一覧を Equation カードとして containerEl に描画する。
-   * @param {HTMLElement} containerEl - #equation-list
+   * EquationBlock 一覧を描画
+   * @param {HTMLElement} containerEl
    */
   renderEquations(containerEl) {
     clearChildren(containerEl);
-
-    /** @type {EquationBlock[]} */
     const equations = this.repo.getAllEquations();
-
-    // 作成順（id など）で並べる（必要なら updatedAt ソートにしても良い）
-    equations.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-
     for (const eb of equations) {
-      const card = this._renderEquationCard(eb);
-      containerEl.appendChild(card);
+      containerEl.appendChild(this.renderEquationCard(eb));
     }
   }
 
-  // =======================================
-  // プライベートヘルパ
-  // =======================================
-
   /**
-   * WordBlock → .block-card block-card--word な DOM を生成。
-   * 例:
-   *  [ラベル] token / queryText を表示
+   * WordBlock → DOM カード
    * @param {WordBlock} word
    * @returns {HTMLElement}
-   * @private
    */
-  _renderWordCard(word) {
+  renderWordCard(word) {
     const card = create('article', 'block-card block-card--word');
     card.dataset.id = word.id;
-    card.setAttribute('role', 'button');
-    card.tabIndex = 0;
 
-    const header = create('header', 'block-card__header');
+    const header = create('div', 'block-card__header');
+
     const title = create('div', 'block-card__title');
     title.textContent = word.label || word.token || word.id;
-    header.appendChild(title);
 
     const meta = create('div', 'block-card__meta');
-    meta.textContent = 'ID: ' + word.id;
-    header.appendChild(meta);
+    meta.textContent = word.id;
 
-    card.appendChild(header);
+    const actions = create('div', 'block-card__actions');
+
+    const btnToEq = create('button', 'btn-small js-word-generate-eq');
+    btnToEq.type = 'button';
+    btnToEq.textContent = '式生成';
+
+    const btnEdit = create('button', 'btn-small js-edit-block');
+    btnEdit.type = 'button';
+    btnEdit.textContent = '編集';
+
+    const btnDelete = create('button', 'btn-small js-delete-block');
+    btnDelete.type = 'button';
+    btnDelete.textContent = '削除';
+
+    actions.appendChild(btnToEq);
+    actions.appendChild(btnEdit);
+    actions.appendChild(btnDelete);
+
+    header.appendChild(title);
+    header.appendChild(meta);
+    header.appendChild(actions);
 
     const body = create('div', 'block-card__body');
 
-    const lineToken = create('div', 'block-card__line');
-    lineToken.innerHTML =
-      '<span class="block-card__label">表示:</span> <code>' +
-      escapeHtml(word.token || '') +
-      '</code>';
-    body.appendChild(lineToken);
+    const line1 = create('div', 'block-card__line');
+    const label1 = create('span', 'block-card__label');
+    label1.textContent = '表示:';
+    const value1 = create('span');
+    value1.textContent = word.token || '(なし)';
+    line1.appendChild(label1);
+    line1.appendChild(value1);
 
-    const lineQuery = create('div', 'block-card__line');
-    lineQuery.innerHTML =
-      '<span class="block-card__label">検索語:</span> <code>' +
-      escapeHtml(word.queryText || '') +
-      '</code>';
-    body.appendChild(lineQuery);
+    const line2 = create('div', 'block-card__line');
+    const label2 = create('span', 'block-card__label');
+    label2.textContent = '検索語:';
+    const value2 = create('span');
+    value2.textContent = word.queryText || '(未設定)';
+    line2.appendChild(label2);
+    line2.appendChild(value2);
 
+    body.appendChild(line1);
+    body.appendChild(line2);
+
+    card.appendChild(header);
     card.appendChild(body);
 
     return card;
   }
 
   /**
-   * EquationBlock → .block-card block-card--equation な DOM を生成。
-   * 中に
-   *  - 論理式: eb.renderLogical(ctx)
-   *  - 検索式: eb.renderQuery(ctx)
-   * を表示。
-   * ヘッダに Word 分解ボタン .btn-small.js-decompose-words を置く。
-   *
+   * EquationBlock → DOM カード
    * @param {EquationBlock} eb
    * @returns {HTMLElement}
-   * @private
    */
-  _renderEquationCard(eb) {
+  renderEquationCard(eb) {
     const card = create('article', 'block-card block-card--equation');
     card.dataset.id = eb.id;
-    card.setAttribute('role', 'button');
-    card.tabIndex = 0;
 
-    const header = create('header', 'block-card__header');
+    const header = create('div', 'block-card__header');
 
     const title = create('div', 'block-card__title');
     title.textContent = eb.label || eb.id;
-    header.appendChild(title);
 
     const meta = create('div', 'block-card__meta');
-    meta.textContent = 'ID: ' + eb.id;
-    header.appendChild(meta);
+    meta.textContent = eb.id;
 
-    const btnDecompose = create(
-      'button',
-      'btn-small js-decompose-words'
-    );
+    const actions = create('div', 'block-card__actions');
+
+    const btnDecompose = create('button', 'btn-small js-decompose-words');
     btnDecompose.type = 'button';
-    btnDecompose.textContent = '式から Word 再生成';
-    header.appendChild(btnDecompose);
+    btnDecompose.textContent = '語再生成';
 
-    card.appendChild(header);
+    const btnEdit = create('button', 'btn-small js-edit-block');
+    btnEdit.type = 'button';
+    btnEdit.textContent = '編集';
+
+    const btnDelete = create('button', 'btn-small js-delete-block');
+    btnDelete.type = 'button';
+    btnDelete.textContent = '削除';
+
+    actions.appendChild(btnDecompose);
+    actions.appendChild(btnEdit);
+    actions.appendChild(btnDelete);
+
+    header.appendChild(title);
+    header.appendChild(meta);
+    header.appendChild(actions);
 
     const body = create('div', 'block-card__body');
 
-    // 論理式表示
     const logicalLine = create('div', 'block-card__line');
-    const logicalText =
-      typeof eb.renderLogical === 'function' ? eb.renderLogical(this.ctx) : '';
-    logicalLine.innerHTML =
-      '<span class="block-card__label">論理式:</span> <code>' +
-      escapeHtml(logicalText) +
-      '</code>';
-    body.appendChild(logicalLine);
+    const logicalLabel = create('span', 'block-card__label');
+    logicalLabel.textContent = '論理式:';
+    const logicalValue = create('span');
+    logicalValue.textContent = eb.renderLogical(this.ctx);
+    logicalLine.appendChild(logicalLabel);
+    logicalLine.appendChild(logicalValue);
 
-    // 検索式表示（/TX・[] を含む最終形）
     const queryLine = create('div', 'block-card__line');
-    const queryText =
-      typeof eb.renderQuery === 'function' ? eb.renderQuery(this.ctx) : '';
-    queryLine.innerHTML =
-      '<span class="block-card__label">検索式:</span> <code>' +
-      escapeHtml(queryText) +
-      '</code>';
+    const queryLabel = create('span', 'block-card__label');
+    queryLabel.textContent = '検索式:';
+    const queryValue = create('span');
+    queryValue.textContent = eb.renderQuery(this.ctx);
+    queryLine.appendChild(queryLabel);
+    queryLine.appendChild(queryValue);
+
+    body.appendChild(logicalLine);
     body.appendChild(queryLine);
 
+    card.appendChild(header);
     card.appendChild(body);
 
     return card;
   }
 }
 
-/**
- * 最低限の HTML エスケープ
- * @param {string} text
- * @returns {string}
- */
-function escapeHtml(text) {
-  return String(text)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-window.ViewRenderer = ViewRenderer
+// グローバル公開
+window.ViewRenderer = ViewRenderer;

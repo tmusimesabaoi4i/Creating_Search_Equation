@@ -1,342 +1,353 @@
 // js/ui/proximity-panel.js
-// 式ビルダーパネル（2近傍・3近傍・OR・AND 用 UI コントロール）
+// 式ビルダー（右側パネル）のロジック
 
-// import { qs, qsa, create } from './dom-utils.js';
-
-/**
- * @typedef {Object} ProxOptions
- * @property {"n"|"c"} mode
- * @property {number} k
- */
-
-/**
- * @typedef {Object} BuilderHandlers
- * @property {(orderIds: string[], opts: ProxOptions) => void} [onBuildL1]
- * @property {(orderIds: string[], opts: ProxOptions) => void} [onBuildProx2]
- * @property {(orderIds: string[], opts: ProxOptions) => void} [onBuildProx3]
- * @property {(orderIds: string[]) => void} [onBuildOr]
- * @property {(orderIds: string[]) => void} [onBuildAnd]
- * @property {(orderIds: string[]) => void} [onOrderChanged]
- * @property {(id: string) => void} [onItemRemoved]
- */
-
-/**
- * 式ビルダーパネル UI。
- * - 素材一覧の表示・順序変更
- * - 近傍パラメータ入力
- * - 1要素式 / 2近傍 / 3近傍 / OR / AND ボタン
- * -> 実際の AST 組立ては AppController 側のハンドラに委譲。
- */
-/** export class*/ class ProximityPanel {
+class ProximityPanel {
   /**
-   * @param {HTMLElement} rootEl - #builder-panel
+   * @param {AppController} appController
    */
-  constructor(rootEl) {
-    this.root = rootEl;
+  constructor(appController) {
+    this.app = appController;
+    this.repo = appController.repo;
+
+    this.selectionIds = []; // 素材として選択された block.id の配列（最大3）
 
     this.elements = {
-      selectionList: qs('#builder-selection-list', this.root),
-      proxModeRadios: /** @type {HTMLInputElement[]} */ (qsa(
-        'input[name="prox-mode"]',
-        this.root
-      )),
-      proxKInput: /** @type {HTMLInputElement} */ (qs('#prox-k-input', this.root)),
-      btnL1: /** @type {HTMLButtonElement} */ (qs('#btn-build-l1', this.root)),
-      btnProx2: /** @type {HTMLButtonElement} */ (qs('#btn-build-prox2', this.root)),
-      btnProx3: /** @type {HTMLButtonElement} */ (qs('#btn-build-prox3', this.root)),
-      btnOr: /** @type {HTMLButtonElement} */ (qs('#btn-build-or', this.root)),
-      btnAnd: /** @type {HTMLButtonElement} */ (qs('#btn-build-and', this.root)),
-      messageBox: /** @type {HTMLElement} */ (qs('#builder-message', this.root))
+      panel: null,
+      list: null,
+      message: null,
+      modeInputs: [],
+      kInput: null,
+      btnL1: null,
+      btnProx2: null,
+      btnProx3: null,
+      btnOr: null,
+      btnAnd: null
     };
+  }
 
-    /** @type {string[]} */
-    this.selectionOrder = [];
+  init() {
+    this.elements.panel = qs('#builder-panel');
+    if (!this.elements.panel) return;
 
-    /** @type {BuilderHandlers} */
-    this.handlers = {};
+    this.elements.list = qs('#builder-selection-list', this.elements.panel);
+    this.elements.message = qs('#builder-message', this.elements.panel);
+    this.elements.modeInputs = Array.from(
+      this.elements.panel.querySelectorAll('input[name="prox-mode"]')
+    );
+    this.elements.kInput = qs('#prox-k-input', this.elements.panel);
 
-    this._bindInternalEvents();
+    this.elements.btnL1 = qs('#btn-build-l1', this.elements.panel);
+    this.elements.btnProx2 = qs('#btn-build-prox2', this.elements.panel);
+    this.elements.btnProx3 = qs('#btn-build-prox3', this.elements.panel);
+    this.elements.btnOr = qs('#btn-build-or', this.elements.panel);
+    this.elements.btnAnd = qs('#btn-build-and', this.elements.panel);
+
+    if (this.elements.btnL1) {
+      this.elements.btnL1.addEventListener('click', () => this.buildL1());
+    }
+    if (this.elements.btnProx2) {
+      this.elements.btnProx2.addEventListener('click', () => this.buildProx2());
+    }
+    if (this.elements.btnProx3) {
+      this.elements.btnProx3.addEventListener('click', () => this.buildProx3());
+    }
+    if (this.elements.btnOr) {
+      this.elements.btnOr.addEventListener('click', () => this.buildOr());
+    }
+    if (this.elements.btnAnd) {
+      this.elements.btnAnd.addEventListener('click', () => this.buildAnd());
+    }
+
+    // 選択リスト内の ↑ / ↓ / × ボタン
+    if (this.elements.list) {
+      this.elements.list.addEventListener('click', (e) =>
+        this.onSelectionListClick(e)
+      );
+    }
+
+    this.renderSelectionList();
   }
 
   /**
-   * AppController からハンドラを登録する。
-   * @param {BuilderHandlers} handlers
+   * AppController から呼ばれる: 選択されている block.id 配列を受け取り反映
+   * @param {string[]} ids
    */
-  bindHandlers(handlers) {
-    this.handlers = handlers || {};
+  setSelectionIds(ids) {
+    this.selectionIds = Array.from(ids);
+    this.renderSelectionList();
   }
 
   /**
-   * 素材一覧（最大 3 個）を UI に描画し、内部の selectionOrder を更新する。
-   * @param {{ id: string, kind: "WB"|"EB", label: string }[]} blockSummaries
+   * リポジトリ更新時に選択をクリーニング
    */
-  updateSelection(blockSummaries) {
-    this.selectionOrder = blockSummaries.map((b) => b.id);
+  onRepositoryUpdated() {
+    this.selectionIds = this.selectionIds.filter((id) => !!this.repo.get(id));
+    this.renderSelectionList();
+  }
 
-    const list = this.elements.selectionList;
-    if (!list) return;
+  /**
+   * 選択中ブロック配列を取得
+   * @returns {Block[]}
+   */
+  getSelectedBlocks() {
+    return this.selectionIds
+      .map((id) => this.repo.get(id))
+      .filter((b) => !!b);
+  }
 
-    list.innerHTML = '';
+  /**
+   * UI上の選択リスト描画
+   */
+  renderSelectionList() {
+    if (!this.elements.list) return;
+    clearChildren(this.elements.list);
 
-    blockSummaries.forEach((b) => {
+    const blocks = this.getSelectedBlocks();
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i];
+
       const li = create('li', 'builder-selection-item');
-      li.dataset.id = b.id;
-      li.dataset.kind = b.kind;
+      li.dataset.id = block.id;
 
-      const labelSpan = create(
-        'span',
-        'builder-selection-item__label'
-      );
-      labelSpan.textContent = `[${b.kind}] ${b.label}`;
-      li.appendChild(labelSpan);
+      const label = create('span', 'builder-selection-item__label');
+      label.textContent = `${block.kind}: ${block.label || block.id}`;
 
-      const controls = create(
-        'div',
-        'builder-selection-item__controls'
-      );
+      const controls = create('div', 'builder-selection-item__controls');
 
-      const btnUp = create('button', 'btn-tiny js-move-up');
+      const btnUp = create('button', 'btn-tiny js-builder-move-up');
       btnUp.type = 'button';
       btnUp.textContent = '↑';
-      controls.appendChild(btnUp);
 
-      const btnDown = create('button', 'btn-tiny js-move-down');
+      const btnDown = create('button', 'btn-tiny js-builder-move-down');
       btnDown.type = 'button';
       btnDown.textContent = '↓';
-      controls.appendChild(btnDown);
 
-      const btnRemove = create('button', 'btn-tiny js-remove');
+      const btnRemove = create('button', 'btn-tiny js-builder-remove');
       btnRemove.type = 'button';
       btnRemove.textContent = '×';
+
+      controls.appendChild(btnUp);
+      controls.appendChild(btnDown);
       controls.appendChild(btnRemove);
 
+      li.appendChild(label);
       li.appendChild(controls);
 
-      list.appendChild(li);
-    });
-  }
-
-  /**
-   * 近傍/論理演算ボタンを enable/disable 切り替えする。
-   * @param {{ l1?: boolean, prox2?: boolean, prox3?: boolean, or?: boolean, and?: boolean }} flags
-   */
-  setOperationEnabled(flags) {
-    flags = flags || {};
-    if (this.elements.btnL1) {
-      this.elements.btnL1.disabled = !flags.l1;
-    }
-    if (this.elements.btnProx2) {
-      this.elements.btnProx2.disabled = !flags.prox2;
-    }
-    if (this.elements.btnProx3) {
-      this.elements.btnProx3.disabled = !flags.prox3;
-    }
-    if (this.elements.btnOr) {
-      this.elements.btnOr.disabled = !flags.or;
-    }
-    if (this.elements.btnAnd) {
-      this.elements.btnAnd.disabled = !flags.and;
+      this.elements.list.appendChild(li);
     }
   }
 
   /**
-   * 近傍形式ラジオボタンの有効/無効を制御する。
-   * 例: 3近傍の場合 allowC=false, allowN=true として c を無効化。
-   * @param {{ allowC: boolean, allowN: boolean }} options
+   * 選択リスト内（↑/↓/×）クリック処理
    */
-  setProximityModeOptions(options) {
-    const allowC = !!options.allowC;
-    const allowN = !!options.allowN;
+  onSelectionListClick(event) {
+    const target = event.target;
+    const li = target.closest('.builder-selection-item');
+    if (!li) return;
+    const id = li.dataset.id;
+    const idx = this.selectionIds.indexOf(id);
+    if (idx === -1) return;
 
-    let anyChecked = false;
-
-    this.elements.proxModeRadios.forEach((radio) => {
-      if (radio.value === 'c') {
-        radio.disabled = !allowC;
-        if (!allowC && radio.checked) {
-          radio.checked = false;
-        }
-      } else if (radio.value === 'n') {
-        radio.disabled = !allowN;
-        if (!allowN && radio.checked) {
-          radio.checked = false;
-        }
+    if (target.classList.contains('js-builder-remove')) {
+      this.selectionIds.splice(idx, 1);
+    } else if (target.classList.contains('js-builder-move-up')) {
+      if (idx > 0) {
+        const tmp = this.selectionIds[idx - 1];
+        this.selectionIds[idx - 1] = this.selectionIds[idx];
+        this.selectionIds[idx] = tmp;
       }
-
-      if (radio.checked) {
-        anyChecked = true;
-      }
-    });
-
-    // どれもチェックされていない場合、許可されている方を優先的に選択
-    if (!anyChecked) {
-      if (allowN) {
-        const nRadio = this.elements.proxModeRadios.find(
-          (r) => r.value === 'n'
-        );
-        if (nRadio) nRadio.checked = true;
-      } else if (allowC) {
-        const cRadio = this.elements.proxModeRadios.find(
-          (r) => r.value === 'c'
-        );
-        if (cRadio) cRadio.checked = true;
+    } else if (target.classList.contains('js-builder-move-down')) {
+      if (idx < this.selectionIds.length - 1) {
+        const tmp = this.selectionIds[idx + 1];
+        this.selectionIds[idx + 1] = this.selectionIds[idx];
+        this.selectionIds[idx] = tmp;
       }
     }
+
+    // AppController 側にも更新を反映（ハイライト維持のため）
+    this.app.setBuilderSelectionIds(this.selectionIds);
   }
 
   /**
-   * ビルダーパネル内のメッセージ表示領域にメッセージを表示 or クリアする。
-   * @param {string} text
-   * @param {"info"|"error"|"none"} [kind]
+   * 近傍モード (n or c)
    */
-  showMessage(text, kind = 'info') {
-    const box = this.elements.messageBox;
-    if (!box) return;
+  getProxMode() {
+    const checked = this.elements.modeInputs.find((i) => i.checked);
+    return checked && checked.value === 'c' ? 'NNc' : 'NNn';
+  }
 
-    box.textContent = text || '';
+  /**
+   * 近傍数 k
+   */
+  getK() {
+    const v = parseInt(this.elements.kInput.value, 10);
+    if (Number.isNaN(v) || v < 0) return 0;
+    if (v > 99) return 99;
+    return v;
+  }
 
-    box.classList.remove('is-error', 'is-info');
+  /**
+   * Block -> ExprNode への変換
+   * @param {Block} block
+   * @returns {ExprNode}
+   */
+  exprFromBlock(block) {
+    if (block.kind === 'EB') {
+      // EquationBlock: AST を clone
+      return block.root.clone();
+    }
+    if (block.kind === 'WB') {
+      // WordBlock: token から WordTokenNode
+      return new WordTokenNode(block.token);
+    }
+    // ClassBlock などは現状ビルダー対象外
+    throw new Error('この種別のブロックは式ビルダーでは使用できません: ' + block.kind);
+  }
 
-    if (!text || kind === 'none') {
+  /**
+   * EquationBlock 生成共通処理
+   * @param {ExprNode} expr
+   * @param {string} labelHint
+   */
+  createEquationFromExpr(expr, labelHint) {
+    const base = labelHint || '式';
+    const index = this.repo.getAllEquations().length + 1;
+    const label = `${base} #${index}`;
+    const id = this.repo.findOrCreateIdForLabel
+      ? this.repo.findOrCreateIdForLabel(label, 'EB')
+      : `EB-${Date.now()}`;
+
+    const eb = new EquationBlock(id, label, expr);
+    this.repo.add(eb);
+
+    this.showMessage(`式を生成しました: ${eb.label}`, 'info');
+    this.app.renderEquationsOnly();
+  }
+
+  /**
+   * 1要素式生成（Word または Equation 1つ → /TX）
+   */
+  buildL1() {
+    const blocks = this.getSelectedBlocks();
+    if (blocks.length !== 1) {
+      this.showMessage('1要素式を作るには、素材を1つだけ選択してください。', 'error');
       return;
     }
+    const block = blocks[0];
+    if (block.kind === 'CB') {
+      this.showMessage('分類ブロックからの 1要素式は、別UIで扱う想定です。', 'error');
+      return;
+    }
+    try {
+      const expr = this.exprFromBlock(block);
+      this.createEquationFromExpr(expr, '1要素式');
+    } catch (e) {
+      this.showMessage(e.message, 'error');
+    }
+  }
+
+  /**
+   * 2近傍式生成
+   */
+  buildProx2() {
+    const blocks = this.getSelectedBlocks();
+    if (blocks.length !== 2) {
+      this.showMessage('2近傍式を作るには、素材を2つ選択してください。', 'error');
+      return;
+    }
+    if (blocks.some((b) => b.kind === 'CB')) {
+      this.showMessage('分類ブロックは 2近傍には使用できません。', 'error');
+      return;
+    }
+    const mode = this.getProxMode(); // 'NNn' or 'NNc'
+    const k = this.getK();
+
+    try {
+      const leftExpr = this.exprFromBlock(blocks[0]);
+      const rightExpr = this.exprFromBlock(blocks[1]);
+      const expr = new ProximityNode(mode, k, leftExpr, rightExpr);
+      this.createEquationFromExpr(expr, '2近傍式');
+    } catch (e) {
+      this.showMessage(e.message, 'error');
+    }
+  }
+
+  /**
+   * 3近傍式生成（単語のみ可）
+   */
+  buildProx3() {
+    const blocks = this.getSelectedBlocks();
+    if (blocks.length !== 3) {
+      this.showMessage('3近傍式を作るには、素材を3つ選択してください。', 'error');
+      return;
+    }
+    if (blocks.some((b) => b.kind !== 'WB')) {
+      this.showMessage('3近傍は単語 (WordBlock) のみ使用できます。', 'error');
+      return;
+    }
+    const k = this.getK(); // 3近傍は NNn 固定
+
+    try {
+      const exprs = blocks.map((b) => this.exprFromBlock(b));
+      const expr = new SimultaneousProximityNode(k, exprs);
+      this.createEquationFromExpr(expr, '3近傍式');
+    } catch (e) {
+      this.showMessage(e.message, 'error');
+    }
+  }
+
+  /**
+   * OR 結合 (E1 + E2 + ...)
+   */
+  buildOr() {
+    const blocks = this.getSelectedBlocks();
+    if (blocks.length < 2) {
+      this.showMessage('OR 結合は2個以上の素材が必要です。', 'error');
+      return;
+    }
+    try {
+      const exprs = blocks.map((b) => this.exprFromBlock(b));
+      const expr = new LogicalNode('+', exprs);
+      this.createEquationFromExpr(expr, 'OR結合');
+    } catch (e) {
+      this.showMessage(e.message, 'error');
+    }
+  }
+
+  /**
+   * AND 結合 (E1 * E2 * ...)
+   */
+  buildAnd() {
+    const blocks = this.getSelectedBlocks();
+    if (blocks.length < 2) {
+      this.showMessage('AND 結合は2個以上の素材が必要です。', 'error');
+      return;
+    }
+    try {
+      const exprs = blocks.map((b) => this.exprFromBlock(b));
+      const expr = new LogicalNode('*', exprs);
+      this.createEquationFromExpr(expr, 'AND結合');
+    } catch (e) {
+      this.showMessage(e.message, 'error');
+    }
+  }
+
+  /**
+   * ビルダーパネル内メッセージ表示
+   * @param {string} text
+   * @param {"info"|"error"} kind
+   */
+  showMessage(text, kind) {
+    if (!this.elements.message) return;
+    this.elements.message.textContent = text;
+    this.elements.message.classList.remove('is-error', 'is-info');
     if (kind === 'error') {
-      box.classList.add('is-error');
+      this.elements.message.classList.add('is-error');
     } else if (kind === 'info') {
-      box.classList.add('is-info');
-    }
-  }
-
-  // =======================================
-  // 内部イベント
-  // =======================================
-
-  _bindInternalEvents() {
-    if (this.elements.btnL1) {
-      this.elements.btnL1.addEventListener('click', () => {
-        const order = this.selectionOrder.slice();
-        const opts = this._getProxOptions();
-        if (this.handlers.onBuildL1) {
-          this.handlers.onBuildL1(order, opts);
-        }
-      });
-    }
-
-    if (this.elements.btnProx2) {
-      this.elements.btnProx2.addEventListener('click', () => {
-        const order = this.selectionOrder.slice();
-        const opts = this._getProxOptions();
-        if (this.handlers.onBuildProx2) {
-          this.handlers.onBuildProx2(order, opts);
-        }
-      });
-    }
-
-    if (this.elements.btnProx3) {
-      this.elements.btnProx3.addEventListener('click', () => {
-        const order = this.selectionOrder.slice();
-        const opts = this._getProxOptions();
-        if (this.handlers.onBuildProx3) {
-          this.handlers.onBuildProx3(order, opts);
-        }
-      });
-    }
-
-    if (this.elements.btnOr) {
-      this.elements.btnOr.addEventListener('click', () => {
-        const order = this.selectionOrder.slice();
-        if (this.handlers.onBuildOr) {
-          this.handlers.onBuildOr(order);
-        }
-      });
-    }
-
-    if (this.elements.btnAnd) {
-      this.elements.btnAnd.addEventListener('click', () => {
-        const order = this.selectionOrder.slice();
-        if (this.handlers.onBuildAnd) {
-          this.handlers.onBuildAnd(order);
-        }
-      });
-    }
-
-    // 選択リストの ↑ / ↓ / × ボタン
-    if (this.elements.selectionList) {
-      this.elements.selectionList.addEventListener('click', (event) => {
-        const target = /** @type {HTMLElement} */ (event.target);
-        const li = target.closest('.builder-selection-item');
-        if (!li || !li.dataset.id) return;
-        const id = li.dataset.id;
-
-        if (target.classList.contains('js-move-up')) {
-          this._handleMove(id, -1);
-        } else if (target.classList.contains('js-move-down')) {
-          this._handleMove(id, +1);
-        } else if (target.classList.contains('js-remove')) {
-          this._handleRemove(id);
-        }
-      });
-    }
-  }
-
-  /**
-   * 近傍オプションを UI から取得する。
-   * @returns {ProxOptions}
-   * @private
-   */
-  _getProxOptions() {
-    let mode = 'n';
-    const checked = this.elements.proxModeRadios.find((r) => r.checked);
-    if (checked && (checked.value === 'n' || checked.value === 'c')) {
-      mode = checked.value;
-    }
-
-    let k = parseInt(this.elements.proxKInput.value, 10);
-    if (isNaN(k)) k = 0;
-    if (k < 0) k = 0;
-    if (k > 99) k = 99;
-
-    return { mode: /** @type {"n"|"c"} */ (mode), k: k };
-  }
-
-  /**
-   * 順序変更（↑ / ↓）を処理。
-   * 新しい順序を onOrderChanged に通知する。UI の再描画自体は AppController 側に任せる。
-   * @param {string} id
-   * @param {number} delta - -1: 上へ, +1: 下へ
-   * @private
-   */
-  _handleMove(id, delta) {
-    const order = this.selectionOrder.slice();
-    const idx = order.indexOf(id);
-    if (idx < 0) return;
-
-    const newIdx = idx + delta;
-    if (newIdx < 0 || newIdx >= order.length) return;
-
-    // 要素入れ替え
-    const tmp = order[idx];
-    order[idx] = order[newIdx];
-    order[newIdx] = tmp;
-
-    if (this.handlers.onOrderChanged) {
-      this.handlers.onOrderChanged(order);
-    }
-  }
-
-  /**
-   * 素材削除（×）を処理。
-   * @param {string} id
-   * @private
-   */
-  _handleRemove(id) {
-    if (this.handlers.onItemRemoved) {
-      this.handlers.onItemRemoved(id);
-    } else if (this.handlers.onOrderChanged) {
-      const order = this.selectionOrder.filter((x) => x !== id);
-      this.handlers.onOrderChanged(order);
+      this.elements.message.classList.add('is-info');
     }
   }
 }
 
-window.ProximityPanel = ProximityPanel
+// グローバル公開
+window.ProximityPanel = ProximityPanel;

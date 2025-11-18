@@ -1,0 +1,84 @@
+/* css/layout-fix.css */
+/* 既存の layout.css / panel.css の上書き用 */
+
+/* 1) アプリ全体: 高さを固定せず、必要に応じて縦スクロールを許可 */
+.app {
+  height: auto;        /* 100vh 固定をやめる */
+  min-height: 100vh;   /* 画面より小さくならないようにだけしておく */
+}
+
+/* 2) 各パネル: コンテンツがはみ出したらページ全体が縦に伸びるようにする */
+.panel {
+  overflow: visible;   /* hidden をやめて中身を表示させる */
+}
+
+/* 3) 若干の最低高さを設定（小さな画面でも潰れすぎないように） */
+.panel--input {
+  min-height: 160px;
+}
+
+.panel--words,
+.panel--equations,
+#builder-panel {
+  min-height: 120px;
+}
+
+/* 4) 高さが低い環境向けの微調整（フォント/パディングを少し詰める） */
+@media (max-height: 800px) {
+  body {
+    font-size: 13px;
+  }
+
+  .panel {
+    padding: 6px;
+  }
+
+  .panel__header h2 {
+    font-size: 13px;
+  }
+
+  .expr-input {
+    font-size: 11px;
+    padding: 3px;
+  }
+
+  .block-card {
+    padding: 3px 5px;
+    font-size: 10px;
+  }
+
+  .builder-body {
+    padding: 4px;
+  }
+}
+
+/* 5) 横幅が狭い場合はグリッドを 1 カラムに落として見切れを防ぐ */
+@media (max-width: 1100px) {
+  .app {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto auto;
+    gap: 8px;
+  }
+
+  .panel--input {
+    grid-column: 1 / 2;
+    grid-row: 1 / 2;
+  }
+
+  .panel--words {
+    grid-column: 1 / 2;
+    grid-row: 2 / 3;
+  }
+
+  .panel--equations {
+    grid-column: 1 / 2;
+    grid-row: 3 / 4;
+  }
+
+  #builder-panel {
+    grid-column: 1 / 2;
+    grid-row: 4 / 5;
+    max-height: none;   /* 下に流れて OK */
+  }
+}

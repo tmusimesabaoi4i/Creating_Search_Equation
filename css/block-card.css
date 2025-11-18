@@ -40,6 +40,13 @@
   color: #888;
 }
 
+/* カード内のアクションボタン群 */
+.block-card__actions {
+  display: flex;
+  gap: 2px;
+  margin-left: 4px;
+}
+
 /* 本文部 */
 .block-card__body {
   display: flex;
