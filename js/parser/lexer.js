@@ -8,9 +8,10 @@
 //   → ")/TX", " + /CP" など
 // - 数字から始まる "10n", "5c" は PROX トークン
 
-import { TokenType, Token } from './token.js';
+// import { TokenType, Token } from './token.js';
 
-export class Lexer {
+// export class Lexer {
+class Lexer {
   /**
    * @param {string} input - 1行の式
    */
@@ -253,3 +254,5 @@ export class Lexer {
     return false;
   }
 }
+
+window.Lexer = Lexer;

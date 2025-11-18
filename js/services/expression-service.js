@@ -6,12 +6,13 @@
 //   - 式行      : NB*UE, NB,10n,UE など   → EquationBlock
 // ・Equation → Word 再分割
 
-import { WordBlock, ClassBlock, EquationBlock } from '../core/block.js';
-import { Lexer } from '../parser/lexer.js';
-import { Parser } from '../parser/parser.js';
-import { WordTokenNode, LogicalNode } from '../core/expr-node.js';
+// import { WordBlock, ClassBlock, EquationBlock } from '../core/block.js';
+// import { Lexer } from '../parser/lexer.js';
+// import { Parser } from '../parser/parser.js';
+// import { WordTokenNode, LogicalNode } from '../core/expr-node.js';
 
-export class ExpressionService {
+// export class ExpressionService {
+class ExpressionService {
   /**
    * @param {import('../core/block-repository.js').BlockRepository} blockRepository
    */
@@ -260,3 +261,6 @@ export class ExpressionService {
     return Array.from(codes);
   }
 }
+
+// ★ クラスをグローバル公開
+window.ExpressionService = ExpressionService;

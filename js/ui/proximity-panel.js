@@ -1,7 +1,7 @@
 // js/ui/proximity-panel.js
 // 式ビルダーパネル（2近傍・3近傍・OR・AND 用 UI コントロール）
 
-import { qs, qsa, create } from './dom-utils.js';
+// import { qs, qsa, create } from './dom-utils.js';
 
 /**
  * @typedef {Object} ProxOptions
@@ -27,7 +27,7 @@ import { qs, qsa, create } from './dom-utils.js';
  * - 1要素式 / 2近傍 / 3近傍 / OR / AND ボタン
  * -> 実際の AST 組立ては AppController 側のハンドラに委譲。
  */
-export class ProximityPanel {
+/** export class*/ class ProximityPanel {
   /**
    * @param {HTMLElement} rootEl - #builder-panel
    */
@@ -338,3 +338,5 @@ export class ProximityPanel {
     }
   }
 }
+
+window.ProximityPanel = ProximityPanel

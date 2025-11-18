@@ -1,7 +1,8 @@
 // js/parser/token.js
 // トークン種別定義と Token クラス
 
-export const TokenType = {
+// export const TokenType = {
+const TokenType = {
   IDENT: 'ident',
   PLUS: 'plus',
   STAR: 'star',
@@ -16,7 +17,8 @@ export const TokenType = {
   EOF: 'eof',
 };
 
-export class Token {
+// export class Token {
+class Token {
   /**
    * @param {string} type - TokenType のいずれか
    * @param {string} text - 元の文字列
@@ -30,3 +32,6 @@ export class Token {
     return `Token(${this.type}, "${this.text}")`;
   }
 }
+
+window.TokenType = TokenType;
+window.Token = Token;

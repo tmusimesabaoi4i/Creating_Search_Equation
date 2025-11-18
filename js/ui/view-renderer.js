@@ -1,15 +1,15 @@
 // js/ui/view-renderer.js
 // BlockRepository の状態を HTML DOM に描画する「描画専用」クラス。
 
-import { create, clearChildren } from './dom-utils.js';
-import { EquationBlock, WordBlock } from '../core/block.js';
+// import { create, clearChildren } from './dom-utils.js';
+// import { EquationBlock, WordBlock } from '../core/block.js';
 
 /**
  * 描画専用クラス。
  * - repo: BlockRepository
  * - ctx : RenderContext
  */
-export class ViewRenderer {
+/** export class*/ class ViewRenderer {
   /**
    * @param {import('../core/block-repository.js').BlockRepository} blockRepository
    * @param {import('../core/render-context.js').RenderContext} renderContext
@@ -185,3 +185,5 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+window.ViewRenderer = ViewRenderer

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <title>特許検索式ブロックビルダー</title>
 
-  <!-- CSS 読み込み（中身は別途実装） -->
+  <!-- CSS 読み込み -->
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/layout.css" />
   <link rel="stylesheet" href="css/panel.css" />
@@ -137,7 +137,33 @@
     </section>
   </div>
 
-  <!-- メインエントリ（ここから AppController を起動） -->
-  <script type="module" src="js/main.js"></script>
+  <!-- ES Modules エントリポイント（main.js を使わず、ここで完結させる） -->
+  <!-- core: AST / Block 基本クラス -->
+  <script src="js/core/expr-node.js"></script>
+  <script src="js/core/block.js"></script>
+  <script src="js/core/block-repository.js"></script>
+  <script src="js/core/render-context.js"></script>
+
+  <!-- parser -->
+  <script src="js/parser/token.js"></script>
+  <script src="js/parser/lexer.js"></script>
+  <script src="js/parser/parser.js"></script>
+
+  <!-- services -->
+  <script src="js/services/expression-service.js"></script>
+
+  <!-- ui -->
+  <script src="js/ui/dom-utils.js"></script>
+  <script src="js/ui/view-renderer.js"></script>
+  <script src="js/ui/proximity-panel.js"></script>
+  <script src="js/ui/app-controller.js"></script>
+
+  <!-- エントリポイント (モジュールではなく素の script) -->
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const app = new AppController();
+      app.init();
+    });
+  </script>
 </body>
 </html>

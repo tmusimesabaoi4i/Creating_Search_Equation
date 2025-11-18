@@ -1,26 +1,26 @@
 // js/ui/app-controller.js
 // UI（DOM）とドメイン層（BlockRepository / ExpressionService）をつなぐコントローラ。
 
-import { qs, qsa } from './dom-utils.js';
-import { BlockRepository } from '../core/block-repository.js';
-import { RenderContext } from '../core/render-context.js';
-import { ExpressionService } from '../services/expression-service.js';
-import { ViewRenderer } from './view-renderer.js';
-import { ProximityPanel } from './proximity-panel.js';
+// import { qs, qsa } from './dom-utils.js';
+// import { BlockRepository } from '../core/block-repository.js';
+// import { RenderContext } from '../core/render-context.js';
+// import { ExpressionService } from '../services/expression-service.js';
+// import { ViewRenderer } from './view-renderer.js';
+// import { ProximityPanel } from './proximity-panel.js';
 
-import {
-  EquationBlock,
-  WordBlock
-} from '../core/block.js';
+// import {
+//   EquationBlock,
+//   WordBlock
+// } from '../core/block.js';
 
-import {
-  BlockRefNode,
-  LogicalNode,
-  ProximityNode,
-  SimultaneousProximityNode
-} from '../core/expr-node.js';
+// import {
+//   BlockRefNode,
+//   LogicalNode,
+//   ProximityNode,
+//   SimultaneousProximityNode
+// } from '../core/expr-node.js';
 
-export class AppController {
+/** export class*/ class AppController {
   constructor() {
     // --- ドメイン層の準備 ---
     /** @type {BlockRepository} */
@@ -661,3 +661,5 @@ export class AppController {
     throw new Error('この種別のブロックは素材として使用できません: ' + block.kind);
   }
 }
+
+window.AppController  = AppController

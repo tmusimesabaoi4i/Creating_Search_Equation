@@ -1,16 +1,17 @@
 // js/core/block.js
 // Block 抽象クラスと、その派生クラス（WordBlock, ClassBlock, EquationBlock）
 
-import {
-  exprNodeToJSON,
-  exprNodeFromJSON,
-  LogicalNode,
-} from './expr-node.js';
+// import {
+//   exprNodeToJSON,
+//   exprNodeFromJSON,
+//   LogicalNode,
+// } from './expr-node.js';
 
 /**
  * 抽象基底: すべての Block の共通親
  */
-export class Block {
+
+/** export class */ class Block {
   /**
    * @param {string} id - 一意な ID ("WB-0001" など)
    * @param {string} label - 表示ラベル
@@ -71,7 +72,7 @@ export class Block {
 /**
  * 語・分類など「値そのもの」を保持するブロックの共通親
  */
-export class ValueBlock extends Block {
+/** export class */ class ValueBlock extends Block {
   /**
    * @param {string} id
    * @param {string} label
@@ -85,7 +86,7 @@ export class ValueBlock extends Block {
 /**
  * 式を表現する Block の共通クラス。AST ルートを保持する。
  */
-export class ExpressionBlock extends Block {
+/** export class */ class ExpressionBlock extends Block {
   /**
    * @param {string} id
    * @param {string} label
@@ -110,7 +111,7 @@ export class ExpressionBlock extends Block {
 /**
  * 語 token と検索式を持つ WordBlock
  */
-export class WordBlock extends ValueBlock {
+/** export class */ class WordBlock extends ValueBlock {
   /**
    * @param {string} id
    * @param {string} label
@@ -162,7 +163,7 @@ export class WordBlock extends ValueBlock {
  * 分類コードを扱う ClassBlock
  * codes に "H04W16/24", "H04W36/00" といった文字列をそのまま保持する。
  */
-export class ClassBlock extends ValueBlock {
+/** export class */ class ClassBlock extends ValueBlock {
   /**
    * @param {string} id
    * @param {string} label
@@ -229,7 +230,7 @@ export class ClassBlock extends ValueBlock {
  * - 単独式: body/TX
  * - 和演算トップレベル式: [body1/TX+body2/TX+...]
  */
-export class EquationBlock extends ExpressionBlock {
+/** export class */ class EquationBlock extends ExpressionBlock {
   /**
    * @param {string} id
    * @param {string} label
@@ -334,3 +335,11 @@ function flattenLogical(node, op, out) {
     out.push(node);
   }
 }
+
+// グローバル公開
+window.Block = Block;
+window.ValueBlock = ValueBlock;
+window.ExpressionBlock = ExpressionBlock;
+window.WordBlock = WordBlock;
+window.ClassBlock = ClassBlock;
+window.EquationBlock = EquationBlock;

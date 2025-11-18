@@ -5,16 +5,17 @@
 // - /TX, /CP, /FI は FIELD トークンとして末尾に 1 個だけ現れる想定。
 // - PROX ("10n","5c") は PROX トークンとして扱う。
 
-import { Lexer } from './lexer.js';
-import { TokenType } from './token.js';
-import {
-  WordTokenNode,
-  LogicalNode,
-  ProximityNode,
-  SimultaneousProximityNode,
-} from '../core/expr-node.js';
+// import { Lexer } from './lexer.js';
+// import { TokenType } from './token.js';
+// import {
+//   WordTokenNode,
+//   LogicalNode,
+//   ProximityNode,
+//   SimultaneousProximityNode,
+// } from '../core/expr-node.js';
 
-export class Parser {
+// export class Parser {
+class Parser {
   /**
    * @param {Lexer} lexer
    */
@@ -304,3 +305,5 @@ export class Parser {
     return { mode, k };
   }
 }
+
+window.Parser = Parser;

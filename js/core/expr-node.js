@@ -4,7 +4,8 @@
 /**
  * 抽象基底: すべての式ノードの共通インターフェース
  */
-export class ExprNode {
+
+/** export class */ class ExprNode {
   /**
    * 人間が読むための簡易論理式文字列を返す。
    * @param {import('./render-context.js').RenderContext} [ctx]
@@ -44,14 +45,14 @@ export class ExprNode {
 /**
  * 子ノードを持たないノードの共通親
  */
-export class LeafNode extends ExprNode {
+/** export class */ class LeafNode extends ExprNode {
   // 共通ロジックなし（型整理用）
 }
 
 /**
  * 複数の子ノードを持つノードの基底クラス
  */
-export class CompositeNode extends ExprNode {
+/** export class */ class CompositeNode extends ExprNode {
   /**
    * @param {ExprNode[]} children
    */
@@ -73,7 +74,7 @@ export class CompositeNode extends ExprNode {
  * 語 token を表す AST ノード
  * token には「H04W16/24」のようなスラッシュを含む文字列もそのまま入る。
  */
-export class WordTokenNode extends LeafNode {
+/** export class */ class WordTokenNode extends LeafNode {
   /**
    * @param {string} token - 生の語（例: "a", "基地局", "H04W16/24"）
    */
@@ -128,7 +129,7 @@ export class WordTokenNode extends LeafNode {
 /**
  * 指定 ID のブロックへの参照ノード
  */
-export class BlockRefNode extends LeafNode {
+/** export class */ class BlockRefNode extends LeafNode {
   /**
    * @param {string} blockId - 参照先ブロック ID ("WB-0001" など)
    */
@@ -178,7 +179,7 @@ export class BlockRefNode extends LeafNode {
  * OR / AND の論理演算ノード
  * 式作成 phase では「式+式」「式*式」などもここで表現される。
  */
-export class LogicalNode extends CompositeNode {
+/** export class */ class LogicalNode extends CompositeNode {
   /**
    * @param {"+"|"*"} op
    * @param {ExprNode[]} operands
@@ -232,7 +233,7 @@ export class LogicalNode extends CompositeNode {
 /**
  * 近傍演算子の共通プロパティ（mode, k）を持つ基底クラス
  */
-export class ProximityBaseNode extends CompositeNode {
+/** export class */ class ProximityBaseNode extends CompositeNode {
   /**
    * @param {"NNn"|"NNc"} mode
    * @param {number} k
@@ -248,7 +249,7 @@ export class ProximityBaseNode extends CompositeNode {
 /**
  * 2 要素の近傍式 A,10n,B / A,10c,B
  */
-export class ProximityNode extends ProximityBaseNode {
+/** export class */ class ProximityNode extends ProximityBaseNode {
   /**
    * @param {"NNn"|"NNc"} mode
    * @param {number} k
@@ -306,7 +307,7 @@ export class ProximityNode extends ProximityBaseNode {
  * 3 要素の同時近傍 {A,B,C},10n
  * 制約: mode は常に "NNn"
  */
-export class SimultaneousProximityNode extends ProximityBaseNode {
+/** export class */ class SimultaneousProximityNode extends ProximityBaseNode {
   /**
    * @param {number} k
    * @param {ExprNode[]} operands - 長さ 3 の ExprNode 配列を想定
@@ -360,7 +361,7 @@ export class SimultaneousProximityNode extends ProximityBaseNode {
  * @param {ExprNode} node
  * @returns {any}
  */
-export function exprNodeToJSON(node) {
+/** export function*/ function exprNodeToJSON(node) {
   if (node instanceof WordTokenNode) {
     return { type: 'word', token: node.token };
   }
@@ -398,7 +399,7 @@ export function exprNodeToJSON(node) {
  * @param {any} obj
  * @returns {ExprNode}
  */
-export function exprNodeFromJSON(obj) {
+/** export function*/ function exprNodeFromJSON(obj) {
   if (!obj || typeof obj !== 'object') {
     throw new Error('Invalid AST JSON');
   }
@@ -432,3 +433,17 @@ export function exprNodeFromJSON(obj) {
       throw new Error(`Unknown AST node type: ${obj.type}`);
   }
 }
+
+// グローバル公開
+window.ExprNode = ExprNode;
+window.LeafNode = LeafNode;
+window.CompositeNode = CompositeNode;
+window.WordTokenNode = WordTokenNode;
+window.BlockRefNode = BlockRefNode;
+window.LogicalNode = LogicalNode;
+window.ProximityBaseNode = ProximityBaseNode;
+window.ProximityNode = ProximityNode;
+window.SimultaneousProximityNode = SimultaneousProximityNode;
+
+window.exprNodeToJSON = exprNodeToJSON;
+window.exprNodeFromJSON = exprNodeFromJSON;

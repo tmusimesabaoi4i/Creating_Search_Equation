@@ -1,14 +1,14 @@
 // js/core/block-repository.js
 // Block の集中管理（追加・検索・削除・永続化）
 
-import {
-  Block,
-  WordBlock,
-  ClassBlock,
-  EquationBlock,
-} from './block.js';
+// import {
+//   Block,
+//   WordBlock,
+//   ClassBlock,
+//   EquationBlock,
+// } from './block.js';
 
-export class BlockRepository {
+/** export class */ class BlockRepository {
   constructor() {
     /** @type {Map<string, Block>} */
     this.blocks = new Map();
@@ -183,3 +183,5 @@ export class BlockRepository {
     return `${kind}-${suffix}`;
   }
 }
+
+window.BlockRepository = BlockRepository;

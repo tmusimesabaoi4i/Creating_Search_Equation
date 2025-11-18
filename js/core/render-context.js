@@ -1,15 +1,15 @@
 // js/core/render-context.js
 // AST が Block や token をクエリ文字列に解決するためのコンテキスト。
 
-import {
-  Block,
-  WordBlock,
-  ClassBlock,
-  EquationBlock,
-} from './block.js';
-import { BlockRepository } from './block-repository.js';
+// import {
+//   Block,
+//   WordBlock,
+//   ClassBlock,
+//   EquationBlock,
+// } from './block.js';
+// import { BlockRepository } from './block-repository.js';
 
-export class RenderContext {
+/** export class */ class RenderContext {
   /**
    * @param {BlockRepository} blockRepository
    */
@@ -94,3 +94,5 @@ export class RenderContext {
     return words.find((wb) => wb.token === token);
   }
 }
+
+window.RenderContext = RenderContext;
