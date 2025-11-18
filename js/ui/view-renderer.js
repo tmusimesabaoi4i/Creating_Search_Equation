@@ -196,12 +196,18 @@ class ViewRenderer {
     btnEdit.type = 'button';
     btnEdit.textContent = '編集';
 
+    // ★ 追加: 検索式コピー用ボタン
+    const copyBtn = create('button', 'btn-small js-copy-equation-query');
+    copyBtn.type = 'button';
+    copyBtn.textContent = 'コピー';
+
     const btnDelete = create('button', 'btn-small js-delete-block');
     btnDelete.type = 'button';
     btnDelete.textContent = '削除';
 
     btnRow.appendChild(btnDecompose);
     btnRow.appendChild(btnEdit);
+    btnRow.appendChild(copyBtn);    // ← ここでヘッダに追加
     btnRow.appendChild(btnDelete);
 
     header.appendChild(labelSpan);

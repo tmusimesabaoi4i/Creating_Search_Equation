@@ -170,6 +170,12 @@ class AppController {
       return;
     }
 
+    // ★ 検索式コピー
+    if (target.classList.contains('js-copy-equation-query')) {
+      this.handleCopyEquationQuery(id);
+      return;
+    }
+
     // 削除
     if (target.closest('.js-delete-block')) {
       event.stopPropagation();
@@ -189,6 +195,118 @@ class AppController {
     if (this.elements.exprInput && block.renderLogical) {
       this.elements.exprInput.value = block.renderLogical(this.ctx);
     }
+  }
+
+  /**
+   * 式ブロックの検索式をクリップボードへコピー
+   * @param {string} ebId
+   */
+  handleCopyEquationQuery(ebId) {
+    const eb = this.repo.get(ebId);
+    if (!eb || eb.kind !== 'EB') return;
+    const text = eb.renderQuery(this.ctx) || '';
+    if (!text) {
+      this.showToast('検索式が空です。', 'error');
+      return;
+    }
+
+    this._copyTextToClipboard(text)
+      .then(() => {
+        this.showToast('検索式をクリップボードにコピーしました。', 'success');
+      })
+      .catch((err) => {
+        console.error('Clipboard copy failed:', err);
+        this.showToast('クリップボードへのコピーに失敗しました。', 'error');
+      });
+  }
+
+  /**
+   * クリップボードコピー共通処理
+   * @param {string} text
+   * @returns {Promise<void>}
+   * @private
+   */
+  _copyTextToClipboard(text) {
+    // navigator.clipboard が使える場合
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+
+    // フォールバック: 一時 textarea + execCommand('copy')
+    return new Promise((resolve, reject) => {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        textarea.style.pointerEvents = 'none';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        if (!successful) {
+          reject(new Error('execCommand("copy") が失敗しました'));
+        } else {
+          resolve();
+        }
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  /**
+   * 右下にトーストメッセージを表示する
+   * @param {string} message
+   * @param {"success"|"error"|"info"} [kind="info"]
+   */
+  showToast(message, kind = 'info') {
+    const container = this._ensureToastContainer();
+
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    if (kind === 'success') {
+      toast.classList.add('toast--success');
+    } else if (kind === 'error') {
+      toast.classList.add('toast--error');
+    }
+    toast.textContent = message;
+
+    container.appendChild(toast);
+
+    // アニメーション開始のために次フレームで is-visible 付与
+    requestAnimationFrame(() => {
+      toast.classList.add('is-visible');
+    });
+
+    const visibleDuration = 2000; // 2秒表示
+    setTimeout(() => {
+      toast.classList.remove('is-visible');
+      // フェードアウト後に DOM から削除
+      const removeDelay = 250;
+      setTimeout(() => {
+        if (toast.parentNode === container) {
+          container.removeChild(toast);
+        }
+      }, removeDelay);
+    }, visibleDuration);
+  }
+
+  /**
+   * トースト用コンテナを確保する（なければ作る）
+   * @returns {HTMLElement}
+   * @private
+   */
+  _ensureToastContainer() {
+    let container = document.querySelector('.toast-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.className = 'toast-container';
+      document.body.appendChild(container);
+    }
+    return container;
   }
 
   /**
