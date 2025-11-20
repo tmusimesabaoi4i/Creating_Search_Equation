@@ -1,0 +1,88 @@
+/* css/workspace-3col.css */
+/* 3カラムワークスペース用レイアウト */
+
+/* 画面全体を3カラムで分割 */
+.workspace {
+  display: grid;
+  width: 100vw;
+  height: 100vh;
+  grid-template-columns: 2.1fr 1.4fr 1.2fr; /* 左:広め / 中央 / 右:少し狭め */
+  column-gap: 8px;
+  padding: 4px;
+}
+
+/* 各カラム共通 */
+.workspace__left,
+.workspace__center,
+.workspace__right {
+  min-height: 0;      /* 内側スクロールを有効にするため */
+  overflow-x: hidden; /* 横スクロールは出さない */
+}
+
+/* ★ 中央カラムはセル自体がスクロール担当 */
+.workspace__center {
+  overflow-y: auto;
+}
+
+/* ★ 左カラムの枠はスクロールさせず、中の .app に任せる */
+.workspace__left {
+  overflow-y: auto;
+}
+
+/* ★ 左カラム内の .app をスクロール担当にする */
+.workspace__left .app {
+  /* layout.css での height 指定を上書き */
+  height: auto;
+  min-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 中央: Google iframe */
+.workspace__frame {
+  width: 100%;
+  height: calc(100% - 24px); /* 下部注意書き分だけ差し引き */
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background-color: #fff;
+}
+
+.workspace__note {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #666;
+}
+
+/* 右: メモ帳 */
+.workspace__right {
+  display: flex;
+  flex-direction: column;
+  /* 右もスクロールさせたければ overflow-y: auto; に変えてOK */
+  overflow-y: hidden;
+}
+
+.workspace__right-header {
+  margin-bottom: 4px;
+}
+
+.memo-textarea {
+  flex: 1;
+  width: 100%;
+  resize: none;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  padding: 4px;
+  box-sizing: border-box;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  background-color: #fff;
+}
+
+/* 3カラム時でも元の .panel, .block-list 挙動を壊さないための保険 */
+.workspace__left .panel {
+  margin-bottom: 6px;
+}
+
+.workspace__left .block-list {
+  max-height: 100%;
+}

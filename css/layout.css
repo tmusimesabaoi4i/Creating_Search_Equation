@@ -1,13 +1,18 @@
 /* css/layout.css */
 /* 3 分割レイアウトとパネル全体のレイアウト */
 
+/* 修正版 css/layout.css */
 .app {
   display: grid;
   grid-template-rows: auto 1fr 1.2fr;
-  height: 100vh;
+  /* height は消すか、auto にする */
+  height: 100vh; /* ← コメントアウト or 削除 */
+  /* 代わりに最低限は親の高さに合わせたいなら: */
+  min-height: 100%;
   gap: 8px;
   padding: 8px;
 }
+
 
 /* 各パネルの共通レイアウト */
 .panel {
@@ -17,6 +22,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  
   background-color: #fff;
 }
 

@@ -440,7 +440,7 @@ class AppController {
     } else if (block.kind === 'EB') {
       this.openEditModalForEquation(block);
     } else {
-      alert('この種別のブロックは編集未対応です: ' + block.kind);
+      showToast('この種別のブロックは編集未対応です: ' + block.kind);
     }
   }
 

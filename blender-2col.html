@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>特許検索式ブロックビルダー - 2ペインワークスペース</title>
+
+  <!-- CSS 読み込み -->
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/panel.css" />
+  <link rel="stylesheet" href="css/block-card.css" />
+  <link rel="stylesheet" href="css/controls.css" />
+  <link rel="stylesheet" href="css/state.css" />
+  <!-- ★ 2カラム用のレイアウト調整 -->
+  <link rel="stylesheet" href="css/workspace-2col.css" />
+  <!-- ブロックビルダー(上部の単語/分類切替)用 -->
+  <link rel="stylesheet" href="css/builder.css" />
+</head>
+<body>
+  <!-- ★ 2カラム全体を包むコンテナ -->
+  <div class="workspace workspace--2col">
+    <!-- 左: 特許検索式ブロックビルダー本体 -->
+    <div class="workspace__left">
+      <div class="app">
+        <!-- 上: 式入力 / ブロックビルダー -->
+        <section class="panel panel--input">
+          <header class="panel__header">
+            <h2>式入力 / ブロックビルダー</h2>
+          </header>
+
+          <textarea
+            id="expr-input"
+            class="expr-input"
+            placeholder="例1) NB = 基地局+NB+eNB&#10;例2) H04W16/24+H04W36/00"
+          ></textarea>
+
+          <!-- ブロックビルダー: 単語 / 分類 選択 + ボタン -->
+          <div class="builder-input-row">
+            <div class="builder-kind-select">
+              <label>
+                <input type="radio" name="builder-kind" value="word" checked />
+                単語ブロック
+              </label>
+              <label>
+                <input type="radio" name="builder-kind" value="class" />
+                分類ブロック
+              </label>
+            </div>
+            <button id="btn-parse" class="btn">
+              入力からブロック生成
+            </button>
+          </div>
+
+          <div class="panel__help">
+            ・入力例 (単語): <code>NB = 基地局+NB+eNB</code> または
+            <code>基地局+NB+eNB</code>（名前なしの場合、token はランダム5文字）<br />
+            ・入力例 (分類): <code>H04W16/24+H04W36/00</code><br />
+            ・分類ブロックでは <code>*</code> や 近傍演算（<code>10n</code>, <code>10c</code>）
+            は使用できません。
+          </div>
+
+          <div id="input-errors" class="error-message"></div>
+        </section>
+
+        <!-- 中: Word / Class ブロック -->
+        <section class="panel panel--words">
+          <header class="panel__header">
+            <h2>Word / Class ブロック</h2>
+          </header>
+          <div id="word-list" class="block-list block-list--words"></div>
+        </section>
+
+        <!-- 下: Equation ブロック + 式ビルダー -->
+        <section class="panel panel--equations">
+          <header class="panel__header">
+            <h2>式 bloc (Equation Blocks)</h2>
+          </header>
+
+          <div class="panel-equation-body">
+            <!-- 左: Equation ブロック一覧 -->
+            <div id="equation-list" class="block-list block-list--equations"></div>
+
+            <!-- 右: 式ビルダーパネル -->
+            <aside id="builder-panel" class="builder-panel">
+              <h3 class="builder-panel__title">式ビルダー</h3>
+
+              <!-- 選択中素材一覧 -->
+              <div class="builder-panel__section">
+                <div class="builder-panel__section-title">素材（最大 3 個）</div>
+                <ul id="builder-selection-list" class="builder-selection-list">
+                  <!-- ProximityPanel が li 要素を動的挿入 -->
+                </ul>
+                <div class="builder-panel__hint">
+                  Word / Equation カードをクリックして素材に追加します。<br />
+                  順序を変更するには ↑ / ↓ ボタンを使用します。
+                </div>
+              </div>
+
+              <!-- 近傍パラメータ -->
+              <div class="builder-panel__section">
+                <div class="builder-panel__section-title">近傍パラメータ</div>
+                <div class="builder-panel__field">
+                  <span class="builder-panel__label">近傍形式</span>
+                  <label>
+                    <input type="radio" name="prox-mode" value="n" checked />
+                    n (NNn)
+                  </label>
+                  <label>
+                    <input type="radio" name="prox-mode" value="c" />
+                    c (NNc)
+                  </label>
+                </div>
+                <div class="builder-panel__field">
+                  <label class="builder-panel__label" for="prox-k-input">
+                    近傍数 (NN)
+                  </label>
+                  <input
+                    id="prox-k-input"
+                    type="number"
+                    min="0"
+                    max="99"
+                    value="10"
+                    class="builder-panel__number"
+                  />
+                </div>
+              </div>
+
+              <!-- 式生成ボタン群 -->
+              <div class="builder-panel__section">
+                <div class="builder-panel__section-title">式生成</div>
+                <div class="builder-panel__buttons">
+                  <button id="btn-build-l1" class="btn-small">
+                    1要素式
+                  </button>
+                  <button id="btn-build-prox2" class="btn-small">
+                    2近傍式
+                  </button>
+                  <button id="btn-build-prox3" class="btn-small">
+                    3近傍式
+                  </button>
+                </div>
+                <div class="builder-panel__buttons">
+                  <button id="btn-build-or" class="btn-small">
+                    OR 結合 (E1 + E2)
+                  </button>
+                  <button id="btn-build-and" class="btn-small">
+                    AND 結合 (E1 * E2)
+                  </button>
+                </div>
+              </div>
+
+              <!-- ビルダー専用メッセージ -->
+              <div id="builder-message" class="builder-panel__message"></div>
+            </aside>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- 右: sample.html 表示用エリア（旧: 中央+右の2カラム分） -->
+    <div class="workspace__right">
+      <iframe
+        class="workspace__frame"
+        src="sample.html"
+        title="サンプルビュー"
+      ></iframe>
+      <div class="workspace__note">
+        ※ ブラウザやGoogle側の制約で表示されない場合があります。
+      </div>
+    </div>
+  </div>
+
+  <!-- JS 読み込み（グローバルクラス順） -->
+  <script src="js/core/expr-node.js"></script>
+  <script src="js/core/block.js"></script>
+  <script src="js/core/block-repository.js"></script>
+  <script src="js/core/render-context.js"></script>
+  <!-- token生成用 -->
+  <script src="js/core/token-generator.js"></script>
+
+  <script src="js/parser/token.js"></script>
+  <script src="js/parser/lexer.js"></script>
+  <script src="js/parser/parser.js"></script>
+
+  <script src="js/services/expression-service.js"></script>
+
+  <script src="js/ui/dom-utils.js"></script>
+  <script src="js/ui/view-renderer.js"></script>
+  <script src="js/ui/proximity-panel.js"></script>
+  <script src="js/ui/app-controller.js"></script>
+
+  <script src="js/main.js"></script>
+</body>
+</html>
