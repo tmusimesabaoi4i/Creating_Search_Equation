@@ -26,3 +26,8 @@
 .builder-kind-select input[type="radio"] {
   transform: scale(0.9);
 }
+
+/* renew ボタンに少しだけ余白をつける */
+#btn-builder-renew {
+  margin-top: 4px;
+}

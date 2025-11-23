@@ -14,7 +14,8 @@ class AppController {
       parseButton: null,
       wordList: null,
       equationList: null,
-      errorBox: null
+      errorBox: null,
+      builderRenewButton: null
     };
 
     // ビルダー用の選択 ID（Word / Equation 共通、最大3）
@@ -29,6 +30,7 @@ class AppController {
     this.elements.wordList = qs('#word-list');
     this.elements.equationList = qs('#equation-list');
     this.elements.errorBox = qs('#input-errors');
+    this.elements.builderRenewButton = qs('#btn-builder-renew');
 
     this.proxPanel = new ProximityPanel(this);
     this.proxPanel.init();
@@ -42,6 +44,12 @@ class AppController {
       this.elements.parseButton.addEventListener('click', () =>
         this.onParseClick()
       );
+    }
+
+    if (this.elements.builderRenewButton) {
+      this.elements.builderRenewButton.addEventListener('click', function () {
+        this.onBuilderRenewClick();
+      });
     }
 
     if (this.elements.wordList) {
@@ -82,6 +90,31 @@ class AppController {
       this.proxPanel.onRepositoryUpdated();
     }
   }
+
+  /**
+   * 式ビルダーの renew ボタン押下時:
+   * - Word / Class ブロックの現在の定義に基づいて
+   *   式ブロックの表示を再評価（renderQuery 再呼び出し）する。
+   * - AST は WordTokenNode / BlockRefNode を参照しているので、
+   *   WordBlock / ClassBlock の queryText を変更しても、再描画だけで反映される。
+   */
+  onBuilderRenewClick = function () {
+    // 必要に応じてエラー表示をクリア
+    this.showErrors([]);
+
+    // Word 定義を変えたあとでも、AST は token / blockId ベースで保持されているので
+    // renderQuery(ctx) を呼び直せば新しい検索式になります。
+    // ⇒ ここでは単純に Equation リストを再描画すればよい。
+    this.renderEquationsOnly();
+
+    // ついでに Word 側も見た目を同期しておく
+    this.renderWordsOnly();
+
+    // 右下トーストで通知（以前 copy ボタン用に showToast を定義していればそれを再利用）
+    if (typeof this.showToast === 'function') {
+      this.showToast('Word / Class の変更内容を式ブロックに再反映しました');
+    }
+  };
 
   /**
    * ラジオボタンからブロック種別を取得
