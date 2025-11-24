@@ -53,8 +53,37 @@ class ExpressionService {
 
       let newId;
       if (kind === 'word') {
+        // Word/Classブロックは既存を上書きする場合があるので、
+        // 新規作成かどうかを事前にチェック
+        const existingToken = name && String(name).trim();
+        const existing = existingToken 
+          ? this.repo.findWordBlockByToken(existingToken)
+          : null;
+        
+        if (!existing) {
+          // 新規作成の場合のみ上限チェック
+          const limitCheck = this.repo.checkBlockLimit('WB');
+          if (!limitCheck.ok) {
+            errors.push(limitCheck.message);
+            return { errors, createdBlockIds: createdIds };
+          }
+        }
+        
         newId = this._createWordBlockFromExpr(name, expr);
       } else {
+        const existingToken = name && String(name).trim();
+        const existing = existingToken 
+          ? this.repo.findClassBlockByToken(existingToken)
+          : null;
+        
+        if (!existing) {
+          const limitCheck = this.repo.checkBlockLimit('CB');
+          if (!limitCheck.ok) {
+            errors.push(limitCheck.message);
+            return { errors, createdBlockIds: createdIds };
+          }
+        }
+        
         newId = this._createClassBlockFromExpr(name, expr);
       }
       if (newId) {
@@ -166,6 +195,11 @@ class ExpressionService {
         if (this._looksLikeClassificationCode(token)) {
           // 分類ブロックとして生成
           if (!this.repo.findClassBlockByToken(token)) {
+            // 上限チェック
+            if (!this.repo.canAddBlock('CB')) {
+              console.warn(`分類ブロックの上限に達しているため、${token} を作成できませんでした。`);
+              return;
+            }
             const id = this.repo.findOrCreateIdForLabel(token, 'CB');
             const cb = new ClassBlock(id, token, token, [token]);
             this.repo.upsert(cb);
@@ -173,6 +207,11 @@ class ExpressionService {
         } else {
           // Wordブロックとして生成
           if (!this.repo.findWordBlockByToken(token)) {
+            // 上限チェック
+            if (!this.repo.canAddBlock('WB')) {
+              console.warn(`Wordブロックの上限に達しているため、${token} を作成できませんでした。`);
+              return;
+            }
             this.repo.createWordBlockFromToken(token, `(${token})`);
           }
         }
@@ -181,12 +220,20 @@ class ExpressionService {
         tokens.forEach((token) => {
           if (this._looksLikeClassificationCode(token)) {
             if (!this.repo.findClassBlockByToken(token)) {
+              if (!this.repo.canAddBlock('CB')) {
+                console.warn(`分類ブロックの上限に達しているため、${token} を作成できませんでした。`);
+                return;
+              }
               const id = this.repo.findOrCreateIdForLabel(token, 'CB');
               const cb = new ClassBlock(id, token, token, [token]);
               this.repo.upsert(cb);
             }
           } else {
             if (!this.repo.findWordBlockByToken(token)) {
+              if (!this.repo.canAddBlock('WB')) {
+                console.warn(`Wordブロックの上限に達しているため、${token} を作成できませんでした。`);
+                return;
+              }
               this.repo.createWordBlockFromToken(token, `(${token})`);
             }
           }
@@ -203,11 +250,16 @@ class ExpressionService {
     let newEb = this.repo.get(id);
     if (newEb && newEb.kind === 'EB') {
       newEb.setRoot(factor.clone ? factor.clone() : factor);
+      this.repo.upsert(newEb);
     } else {
+      // 新規作成の場合は上限チェック
+      if (!this.repo.canAddBlock('EB')) {
+        console.warn(`式ブロックの上限に達しているため、${label} を作成できませんでした。`);
+        return;
+      }
       newEb = new EquationBlock(id, label, factor.clone ? factor.clone() : factor);
+      this.repo.upsert(newEb);
     }
-    
-    this.repo.upsert(newEb);
   }
 
   /**

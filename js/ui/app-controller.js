@@ -405,9 +405,11 @@ class AppController {
     if (idx >= 0) {
       this.state.builderSelectionIds.splice(idx, 1);
     } else {
-      if (this.state.builderSelectionIds.length >= 3) {
+      // 選択上限を30個に拡大（積演算で複数選択可能にするため）
+      // 近傍演算の個数制限はProximityPanel側で判定
+      if (this.state.builderSelectionIds.length >= 30) {
         if (this.proxPanel) {
-          this.proxPanel.showMessage('素材は最大3個までです。', 'error');
+          this.proxPanel.showMessage('素材は最大30個までです。', 'error');
         }
         return;
       }

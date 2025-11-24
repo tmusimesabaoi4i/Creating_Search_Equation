@@ -224,12 +224,18 @@ class ProximityPanel {
     const blocks = this._getSelectedBlocks();
     const n = blocks.length;
 
-    const hasBlocks = n > 0;
-    const canProxAll = blocks.every((b) => this._isProxCandidateBlock(b));
-
     if (this.btnBuildL1) {
       this.btnBuildL1.disabled = n !== 1;
     }
+
+    // 選択中のブロック種別を判定
+    const hasEquation = blocks.some((b) => b.kind === 'EB');
+    const hasWord = blocks.some((b) => b.kind === 'WB');
+    const hasClass = blocks.some((b) => b.kind === 'CB');
+    
+    // 近傍ボタン: 式ブロックが含まれる場合は不可、それ以外はWord/Class由来のみ許可
+    const canProxAll = !hasEquation && blocks.every((b) => this._isProxCandidateBlock(b));
+    
     if (this.btnBuildProx2) {
       this.btnBuildProx2.disabled = !(n === 2 && canProxAll);
     }
@@ -237,32 +243,22 @@ class ProximityPanel {
       this.btnBuildProx3.disabled = !(n === 3 && canProxAll);
     }
 
-    // AND: 2 個以上で有効（複数個の積を許可）
+    // AND（積）: 2 個以上で常に有効
     if (this.btnBuildAnd) {
       this.btnBuildAnd.disabled = n < 2;
     }
 
-    // OR: 2 個以上で有効
-    // すべて式ブロックの場合は無条件に許可（任意の式ブロック同士の和）
-    // それ以外は「Word 系のみ」or「Class 系のみ」のときのみ許可
+    // OR（和）: 式ブロックが含まれる場合は不可
+    // Word同士、Class同士、Word+Classの組み合わせのみ許可
     if (this.btnBuildOr) {
-      const allEquation = blocks.every((b) => b.kind === 'EB');
-      
-      if (allEquation) {
-        // すべて式ブロックの場合は無条件に許可
-        this.btnBuildOr.disabled = n < 2;
+      if (hasEquation) {
+        // 式ブロックが含まれる場合は和演算不可
+        this.btnBuildOr.disabled = true;
       } else {
-        // それ以外の場合は既存のロジック
+        // Word/Classのみの場合
         const orType = this._getLogicalTypeForBlocks(blocks);
         const allowOrByType = orType === 'word' || orType === 'class';
-        
-        // 2個の場合のみ、式と他ブロックの組み合わせをチェック
-        let allowOrByScenario = true;
-        if (n === 2 && allowOrByType) {
-          allowOrByScenario = this._isOrOperationAllowedForPair(blocks[0], blocks[1], orType);
-        }
-        
-        this.btnBuildOr.disabled = n < 2 || !allowOrByType || !allowOrByScenario;
+        this.btnBuildOr.disabled = n < 2 || !allowOrByType;
       }
     }
   }
@@ -510,6 +506,12 @@ class ProximityPanel {
     if (eb && eb.kind === 'EB') {
       eb.setRoot(newRoot);
     } else {
+      // 新規作成の場合は上限チェック
+      const limitCheck = this.app.repo.checkBlockLimit('EB');
+      if (!limitCheck.ok) {
+        this.showMessage(limitCheck.message, 'error');
+        return;
+      }
       eb = new EquationBlock(id, label, newRoot);
     }
 
@@ -553,6 +555,12 @@ class ProximityPanel {
     if (eb && eb.kind === 'EB') {
       eb.setRoot(proxNode);
     } else {
+      // 新規作成の場合は上限チェック
+      const limitCheck = this.app.repo.checkBlockLimit('EB');
+      if (!limitCheck.ok) {
+        this.showMessage(limitCheck.message, 'error');
+        return;
+      }
       eb = new EquationBlock(id, label, proxNode);
     }
     eb.canUseForProximity = true;
@@ -587,6 +595,12 @@ class ProximityPanel {
     if (eb && eb.kind === 'EB') {
       eb.setRoot(proxNode);
     } else {
+      // 新規作成の場合は上限チェック
+      const limitCheck = this.app.repo.checkBlockLimit('EB');
+      if (!limitCheck.ok) {
+        this.showMessage(limitCheck.message, 'error');
+        return;
+      }
       eb = new EquationBlock(id, label, proxNode);
     }
     eb.canUseForProximity = true;
@@ -614,37 +628,33 @@ class ProximityPanel {
       return;
     }
 
-    const logicalType = this._getLogicalTypeForBlocks(blocks);
-
+    // 選択中のブロック種別を判定
+    const hasEquation = blocks.some((b) => b.kind === 'EB');
+    
     if (op === '+') {
-      // すべて式ブロックの場合は無条件に許可（任意の式ブロック同士の和）
-      const allEquation = blocks.every((b) => b.kind === 'EB');
+      // 式ブロックが含まれる場合は和演算不可
+      if (hasEquation) {
+        this.showMessage(
+          '式ブロックが含まれる場合、和演算(OR)は使用できません。積演算(AND)のみ使用可能です。',
+          'error'
+        );
+        return;
+      }
       
-      if (!allEquation) {
-        // 式ブロック以外が含まれる場合は既存のルールを適用
-        // Word+Class の和演算は禁止（基本ルール）
-        if (!(logicalType === 'word' || logicalType === 'class')) {
-          this.showMessage(
-            '和演算は「Word系だけ」または「分類系だけ」または「式ブロックだけ」の場合にのみ使用できます（Wordと分類の和演算は禁止）。',
-            'error'
-          );
-          return;
-        }
-
-        // 2個の場合のみ、「式 + Word / Class」の組み合わせをチェック
-        if (blocks.length === 2) {
-          const left = blocks[0];
-          const right = blocks[1];
-          if (!this._isOrOperationAllowedForPair(left, right, logicalType)) {
-            this.showMessage(
-              'この組み合わせの OR は仕様上禁止されています（式構造に起因）。',
-              'error'
-            );
-            return;
-          }
-        }
+      // Word/Classのみの場合
+      const logicalType = this._getLogicalTypeForBlocks(blocks);
+      
+      // Word+Class の混在和演算は禁止
+      if (!(logicalType === 'word' || logicalType === 'class')) {
+        this.showMessage(
+          '和演算は「Word系だけ」または「分類系だけ」の場合にのみ使用できます（Wordと分類の和演算は禁止）。',
+          'error'
+        );
+        return;
       }
     }
+    
+    // 積演算(*)は常に許可（式ブロック含め全組み合わせOK）
 
     const children = blocks.map((b) => new BlockRefNode(b.id));
     const logicalNode = new LogicalNode(op, children);
@@ -659,6 +669,12 @@ class ProximityPanel {
     if (eb && eb.kind === 'EB') {
       eb.setRoot(logicalNode);
     } else {
+      // 新規作成の場合は上限チェック
+      const limitCheck = this.app.repo.checkBlockLimit('EB');
+      if (!limitCheck.ok) {
+        this.showMessage(limitCheck.message, 'error');
+        return;
+      }
       eb = new EquationBlock(id, label, logicalNode);
     }
 

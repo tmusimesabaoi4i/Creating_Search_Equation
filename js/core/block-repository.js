@@ -1,6 +1,9 @@
 // js/core/block-repository.js
 // Block の集中管理（追加・検索・削除・永続化）
 
+// ブロック種別ごとの上限数
+const MAX_BLOCKS_PER_KIND = 30;
+
 class BlockRepository {
   constructor() {
     /** @type {Map<string, Block>} */
@@ -96,6 +99,44 @@ class BlockRepository {
    */
   getAllEquations() {
     return this.getAll().filter((b) => b.kind === 'EB');
+  }
+
+  /**
+   * 指定種別のブロック数をカウント
+   * @param {"WB"|"CB"|"EB"} kind
+   * @returns {number}
+   */
+  countBlocksByKind(kind) {
+    return this.getAll().filter((b) => b.kind === kind).length;
+  }
+
+  /**
+   * 指定種別のブロックを追加可能かチェック（上限30個）
+   * @param {"WB"|"CB"|"EB"} kind
+   * @returns {boolean}
+   */
+  canAddBlock(kind) {
+    return this.countBlocksByKind(kind) < MAX_BLOCKS_PER_KIND;
+  }
+
+  /**
+   * 指定種別のブロック追加可否をチェックし、不可の場合はエラーメッセージを返す
+   * @param {"WB"|"CB"|"EB"} kind
+   * @returns {{ok: boolean, message?: string}}
+   */
+  checkBlockLimit(kind) {
+    if (this.canAddBlock(kind)) {
+      return { ok: true };
+    }
+    
+    const kindName = kind === 'WB' ? 'Wordブロック' 
+                   : kind === 'CB' ? '分類ブロック' 
+                   : '式ブロック';
+    
+    return {
+      ok: false,
+      message: `${kindName}は${MAX_BLOCKS_PER_KIND}個までしか作成できません。既存のブロックを削除してから再度お試しください。`
+    };
   }
 
   /**

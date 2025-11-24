@@ -111,6 +111,19 @@ class WordBlock extends ValueBlock {
     this.touchUpdated();
   }
 
+  /**
+   * queryText内の単語数をカウント（+ または ＋ で区切られた要素数）
+   * 括弧の適用ルール判定に使用
+   * @returns {number}
+   */
+  getWordCount() {
+    if (!this.queryText || !this.queryText.trim()) return 0;
+    
+    // 共通のcountElements関数を使用
+    // これにより半角+ と 全角＋ の両方を正しく認識
+    return countElements(this.queryText);
+  }
+
   toJSON() {
     const base = super.toJSON();
     return Object.assign(base, {
@@ -180,6 +193,15 @@ class ClassBlock extends ValueBlock {
     this.codes = Array.isArray(codes) ? codes : [];
     this._recalcExpressions();
     this.touchUpdated();
+  }
+
+  /**
+   * 分類コードの数をカウント
+   * 括弧の適用ルール判定に使用
+   * @returns {number}
+   */
+  getClassCount() {
+    return Array.isArray(this.codes) ? this.codes.length : 0;
   }
 
   toJSON() {
@@ -680,6 +702,56 @@ function combineFieldPartsOr(list, node, ctx) {
 }
 
 /**
+ * 文字列内の要素数をカウント（+ または ＋ で区切られた要素数）
+ * 括弧の適用ルール判定に使用
+ * @param {string} text
+ * @returns {number}
+ */
+function countElements(text) {
+  if (!text || !text.trim()) return 0;
+  
+  let stripped = stripOuterParens(text.trim());
+  
+  // トップレベルの + または ＋（全角プラス）で分割して要素数をカウント
+  let depth = 0;
+  let count = 1; // 最初の要素
+  
+  for (let i = 0; i < stripped.length; i++) {
+    const ch = stripped[i];
+    if (ch === '(' || ch === '{' || ch === '[') {
+      depth++;
+    } else if (ch === ')' || ch === '}' || ch === ']') {
+      depth = Math.max(0, depth - 1);
+    } else if ((ch === '+' || ch === '＋') && depth === 0) {
+      // 半角+ と 全角＋ の両方を区切り文字として認識
+      count++;
+    }
+  }
+  
+  return count;
+}
+
+/**
+ * 要素数に基づいて適切な括弧付き/TX式を生成
+ * @param {string} body - 本体文字列
+ * @param {string} tag - タグ ("/TX", "/FI", "/CP" など)
+ * @returns {string}
+ */
+function applyTagWithParens(body, tag) {
+  const stripped = stripOuterParens(body.trim());
+  if (!stripped) return '';
+  
+  const elemCount = countElements(stripped);
+  
+  // 要素数が1個 → 括弧不要、2個以上 → 括弧必要
+  if (elemCount === 1) {
+    return `${stripped}${tag}`;
+  } else {
+    return `(${stripped})${tag}`;
+  }
+}
+
+/**
  * FieldParts → 実際の検索式文字列に変換
  * @param {FieldParts} parts
  * @returns {string}
@@ -694,43 +766,59 @@ function renderFieldParts(parts) {
   const renderedW = wList.map(item => {
     if (typeof item === 'object' && item.type === 'prox') {
       // ProximityTerm: [left, mode, (right1+right2...)/TX]
-      // rightTerms の各要素に /TX をつけるかどうか?
-      // 仕様: [W1,NNn,(W2)/TX + W3/TX] 
-      // つまり右辺全体が 1 つの式として扱われる?
-      // いや、例を見ると: [W1,NNn,(W2)/TX] (単体)
-      // 追加あり: [W1,NNn,(W2)/TX+W3/TX]
-      // つまり右側は「/TX付きの項の和」になっている。
+      // 左辺と右辺それぞれに要素数判定を適用
       
       const left = item.left;
       const mode = item.mode === 'NNc' ? 'c' : 'n';
       const k = item.k;
       
+      // 左辺: 要素数に基づいて括弧を決定（タグなし）
+      const leftStripped = stripOuterParens(left.trim());
+      const leftElemCount = countElements(leftStripped);
+      const leftExpr = leftElemCount === 1 ? leftStripped : `(${leftStripped})`;
+      
+      // 右辺: 各要素に /TX を付けて +で結合
       const rights = item.rightTerms.map(r => {
-        // r は生の文字列 (例: "W2" や "A+B")
-        // stripOuterParens して /TX
-        const body = stripOuterParens(r);
-        if (/[\+,{]/.test(body)) {
-          return `(${body})/TX`;
-        }
-        return `${body}/TX`;
+        return applyTagWithParens(r, '/TX');
       });
       
       const rightExpr = rights.join('+');
-      return `[${left},${k}${mode},${rightExpr}]`;
+      return `[${leftExpr},${k}${mode},${rightExpr}]`;
     } else if (typeof item === 'string') {
+      // 3近傍式 {A,B,C},10n の形式をチェック
+      const simultMatch = item.match(/^\{([^}]+)\},(\d+)n$/);
+      if (simultMatch) {
+        // 3近傍式の処理
+        const innerTerms = simultMatch[1];
+        const k = simultMatch[2];
+        
+        // カンマで分割して各要素を処理
+        const terms = innerTerms.split(',').map(t => {
+          const stripped = stripOuterParens(t.trim());
+          const elemCount = countElements(stripped);
+          // 要素数に基づいて括弧を決定
+          // 1個 → 括弧なし、2個以上 → 括弧あり
+          return elemCount === 1 ? stripped : `(${stripped})`;
+        });
+        
+        // 3近傍全体を再構築
+        const proximityExpr = `{${terms.join(',')}},${k}n`;
+        
+        // 3近傍全体に /TX を付与
+        // 3近傍は1つのWord因子として扱われるため、
+        // countElementsで見ると1要素となり、括弧は付かず/TXだけが付く
+        return applyTagWithParens(proximityExpr, '/TX');
+      }
+      
       // 文字列因子
       // "*" を含む場合 (WordTokenNode由来など) は分解
       if (item.indexOf('*') !== -1) {
         const factors = splitTopLevelByStar(item);
         return factors.map(f => {
-          const body = stripOuterParens(f.trim());
-          if (/[\+,{]/.test(body)) return `(${body})/TX`;
-          return `${body}/TX`;
+          return applyTagWithParens(f.trim(), '/TX');
         }).join('*');
       } else {
-        const body = stripOuterParens(item);
-        if (/[\+,{]/.test(body)) return `(${body})/TX`;
-        return `${body}/TX`;
+        return applyTagWithParens(item, '/TX');
       }
     }
     return '';
@@ -740,9 +828,18 @@ function renderFieldParts(parts) {
   // cList は分類式のリスト。配列要素間は「積」。
   // cList要素内は既に「和」結合されている(combineFieldPartsOrで)。
   const renderedC = cList.map(F => {
-    // C-4: 括弧削減 (ここでも念のため strip)
-    const body = stripOuterParens(F);
-    return `[(${body})/CP+(${body})/FI]`;
+    const stripped = stripOuterParens(F);
+    const elemCount = countElements(stripped);
+    
+    // 要素数に基づいて括弧を決定
+    let innerExpr;
+    if (elemCount === 1) {
+      innerExpr = stripped;
+    } else {
+      innerExpr = `(${stripped})`;
+    }
+    
+    return `[${innerExpr}/CP+${innerExpr}/FI]`;
   }).join('*');
 
   if (renderedW && renderedC) return `${renderedW}*${renderedC}`;
