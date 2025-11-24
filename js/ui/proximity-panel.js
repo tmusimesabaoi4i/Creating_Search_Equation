@@ -78,6 +78,17 @@ class ProximityPanel {
     this.clearMessage();
   }
 
+  /**
+   * BlockRepository の Word / Class / Equation 定義が変わったときに呼ぶ。
+   *
+   * 主な呼び出し元:
+   *  - AppController.onParseClick（新規ブロック作成時）
+   *  - Word / Class / Equation の編集・削除処理
+   *  - 式ビルダーの renew ボタン（Word / Class 定義変更の再反映）
+   *
+   * ここを「近傍パネル側の再評価入口」として扱い、
+   * 選択リストとボタン状態を最新のリポジトリ内容に合わせて更新する。
+   */
   onRepositoryUpdated() {
     this.renderSelectionList();
     this.updateButtons();
@@ -205,6 +216,9 @@ class ProximityPanel {
     const hasBlocks = n > 0;
     const canProxAll = blocks.every((b) => this._isProxCandidateBlock(b));
 
+    // 「2 項演算モード」かどうか（AND/OR の特別扱い用）
+    const isBinaryMode = n === 2;
+
     if (this.btnBuildL1) {
       this.btnBuildL1.disabled = n !== 1;
     }
@@ -215,17 +229,23 @@ class ProximityPanel {
       this.btnBuildProx3.disabled = !(n === 3 && canProxAll);
     }
 
-    // OR/AND: 2 つ以上必要
-    // ただし OR は「Word 系のみ」or「Class 系のみ」のときのみ許可
+    // OR/AND: 2 つ必要（近傍パネルでは 2 項演算モードを前提とする）
+    // ただし OR は「Word 系のみ」or「Class 系のみ」のときのみ許可。
+    // さらに「式 + Word / Class」のときは式構造に応じて禁止パターンを弾く。
     const orType = this._getLogicalTypeForBlocks(blocks);
+    const allowOrByType = orType === 'word' || orType === 'class';
+    const allowOrByScenario =
+      isBinaryMode && allowOrByType
+        ? this._isOrOperationAllowedForPair(blocks[0], blocks[1], orType)
+        : true;
     if (this.btnBuildOr) {
       this.btnBuildOr.disabled =
-        n < 2 || !hasBlocks || !(orType === 'word' || orType === 'class');
+        !isBinaryMode || !hasBlocks || !allowOrByType || !allowOrByScenario;
     }
 
     if (this.btnBuildAnd) {
-      // AND は Word+Class も許可（積演算）
-      this.btnBuildAnd.disabled = n < 2 || !hasBlocks;
+      // AND は Word+Class も許可（積演算）だが、ここでは 2 項のみを対象とする
+      this.btnBuildAnd.disabled = !isBinaryMode || !hasBlocks;
     }
   }
 
@@ -258,7 +278,7 @@ class ProximityPanel {
   _getLogicalTypeForBlocks(blocks) {
     if (!blocks || blocks.length === 0) return 'empty';
 
-    const repo = this.app.repo;
+    const ctx = this.app.ctx;
     const typeSet = new Set();
 
     blocks.forEach((b) => {
@@ -270,7 +290,7 @@ class ProximityPanel {
         if (!b.root) {
           typeSet.add('empty');
         } else {
-          const parts = translateExprToFieldParts(b.root, repo);
+          const parts = translateExprToFieldParts(b.root, ctx);
           const hasWord = !!(parts.w && parts.w.trim().length > 0);
           const hasClass = parts.c && parts.c.length > 0;
           if (hasWord && hasClass) typeSet.add('mixed');
@@ -286,6 +306,145 @@ class ProximityPanel {
     if (typeSet.has('word')) return 'word';
     if (typeSet.has('class')) return 'class';
     return 'empty';
+  }
+
+  /**
+   * 「式 + Word」/「式 + Class」の OR が仕様上許可されるかを判定する。
+   *
+   * - 式 + Word:
+   *   不可: Word×Class, Class×Class, Class+Class, Word×Word
+   *   許可: Word+Word, Word NNn Word
+   * - 式 + Class:
+   *   許可: Word×Class, Class+Class
+   *   不可: Class×Class(積), Word×Word, Word+Word, Word NNn Word
+   *
+   * @param {Block} left
+   * @param {Block} right
+   * @param {"word"|"class"|"mixed"|"empty"} logicalTypeHint
+   * @returns {boolean}
+   * @private
+   */
+  _isOrOperationAllowedForPair(left, right, logicalTypeHint) {
+    const ctx = this.app.ctx;
+    const isEq = (b) => b && b.kind === 'EB';
+    const isWord = (b) => b && b.kind === 'WB';
+    const isClass = (b) => b && b.kind === 'CB';
+
+    const eq =
+      isEq(left) && !isEq(right)
+        ? left
+        : isEq(right) && !isEq(left)
+        ? right
+        : null;
+    const other = eq === left ? right : eq === right ? left : null;
+
+    // 式ブロックを含まない場合は、従来の logicalType 判定に任せる
+    if (!eq || !other || !eq.root) {
+      return logicalTypeHint === 'word' || logicalTypeHint === 'class';
+    }
+
+    const structure = this._analyzeEquationBlockStructure(eq, ctx);
+
+    // --- 式 + Word ---
+    if (isWord(other)) {
+      if (
+        structure === 'MIX_PROD' || // Word×Class
+        structure === 'C_PROD' || // Class×Class(積)
+        structure === 'C_SUM' || // Class+Class
+        structure === 'W_PROD' // Word×Word
+      ) {
+        return false;
+      }
+      if (structure === 'W_SUM' || structure === 'W_PROX') {
+        return true;
+      }
+      // 判定不能な場合は安全側で禁止
+      return false;
+    }
+
+    // --- 式 + Class ---
+    if (isClass(other)) {
+      if (structure === 'MIX_PROD' || structure === 'C_SUM') {
+        return true;
+      }
+      // それ以外（C_PROD, W_PROD, W_SUM, W_PROX 等）は禁止
+      return false;
+    }
+
+    // それ以外（式+式 など）は従来の判定に任せる
+    return logicalTypeHint === 'word' || logicalTypeHint === 'class';
+  }
+
+  /**
+   * EquationBlock の構造を大まかに分類するヘルパ
+   *
+   * 戻り値（代表例）:
+   *  - "MIX_PROD" : Word×Class（積）
+   *  - "C_PROD"   : Class×Class（積）
+   *  - "C_SUM"    : Class+Class（和）
+   *  - "W_PROD"   : Word×Word（積）
+   *  - "W_SUM"    : Word+Word（和）
+   *  - "W_PROX"   : Word NNn Word / SimultaneousProximity
+   *  - "UNKNOWN"  : 上記に当てはまらない or 判定不能
+   *
+   * @param {EquationBlock} eb
+   * @param {RenderContext} ctx
+   * @returns {"MIX_PROD"|"C_PROD"|"C_SUM"|"W_PROD"|"W_SUM"|"W_PROX"|"UNKNOWN"}
+   * @private
+   */
+  _analyzeEquationBlockStructure(eb, ctx) {
+    if (!eb || eb.kind !== 'EB' || !eb.root) return 'UNKNOWN';
+    const root = eb.root;
+
+    // 近傍ノードは専用扱い
+    if (root instanceof ProximityNode || root instanceof SimultaneousProximityNode) {
+      return 'W_PROX';
+    }
+
+    // トップレベル LogicalNode の場合は OR/AND で分岐
+    if (root instanceof LogicalNode) {
+      const op = root.op;
+      const children = Array.isArray(root.children) ? root.children : [];
+
+      if (op === '+') {
+        // 各ブランチを FieldParts に翻訳し、Word-only / Class-only を判定
+        const list = children.map((ch) => translateExprToFieldParts(ch, ctx));
+        let anyWord = false;
+        let anyClass = false;
+        list.forEach((p) => {
+          const hasWord = !!(p.w && p.w.trim().length > 0);
+          const hasClass = p.c && p.c.length > 0;
+          if (hasWord) anyWord = true;
+          if (hasClass) anyClass = true;
+        });
+
+        if (anyWord && !anyClass) return 'W_SUM';
+        if (!anyWord && anyClass) return 'C_SUM';
+        return 'UNKNOWN';
+      }
+
+      if (op === '*') {
+        const parts = translateExprToFieldParts(root, ctx);
+        const hasWord = !!(parts.w && parts.w.trim().length > 0);
+        const hasClass = parts.c && parts.c.length > 0;
+
+        if (hasWord && hasClass) return 'MIX_PROD';
+        if (!hasWord && hasClass) return 'C_PROD';
+        if (hasWord && !hasClass) return 'W_PROD';
+        return 'UNKNOWN';
+      }
+    }
+
+    // LogicalNode 以外の場合は全体を 1 式として判定（保守的に扱う）
+    const parts = translateExprToFieldParts(root, ctx);
+    const hasWord = !!(parts.w && parts.w.trim().length > 0);
+    const hasClass = parts.c && parts.c.length > 0;
+
+    if (hasWord && hasClass) return 'MIX_PROD';
+    if (!hasWord && hasClass) return 'C_SUM';
+    if (hasWord && !hasClass) return 'W_PROD';
+
+    return 'UNKNOWN';
   }
 
   _getProxMode() {
@@ -416,18 +575,32 @@ class ProximityPanel {
    */
   handleBuildLogical(op) {
     const blocks = this._getSelectedBlocks();
-    if (blocks.length < 2) {
-      this.showMessage('OR/AND 結合には素材を 2 つ以上選択してください。', 'error');
+
+    // 近傍パネルでは「2 項演算モード」のみを対象とする
+    if (blocks.length !== 2) {
+      this.showMessage('OR/AND 結合には素材を 2 つ選択してください。', 'error');
       return;
     }
 
     const logicalType = this._getLogicalTypeForBlocks(blocks);
 
     if (op === '+') {
-      // Word+Class の和演算は禁止
+      // Word+Class の和演算は禁止（基本ルール）
       if (!(logicalType === 'word' || logicalType === 'class')) {
         this.showMessage(
           '和演算は「Word系だけ」または「分類系だけ」の場合にのみ使用できます（Wordと分類の和演算は禁止）。',
+          'error'
+        );
+        return;
+      }
+
+      // 「式 + Word / Class」の場合は、式ブロックの構造に応じて
+      // 仕様上禁止されている OR パターンを弾く。
+      const left = blocks[0];
+      const right = blocks[1];
+      if (!this._isOrOperationAllowedForPair(left, right, logicalType)) {
+        this.showMessage(
+          'この組み合わせの OR は仕様上禁止されています（式構造に起因）。',
           'error'
         );
         return;

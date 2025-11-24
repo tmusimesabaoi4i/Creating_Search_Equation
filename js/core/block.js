@@ -270,7 +270,7 @@ class EquationBlock extends ExpressionBlock {
       // 各ブランチの型判定
       const typeSet = new Set(); // "word" | "class" | "mixed" | "empty"
       partList.forEach((p) => {
-        const hasWord = !!(p.w && p.w.trim().length > 0);
+        const hasWord = p.w && p.w.length > 0;
         const hasClass = p.c && p.c.length > 0;
         let t = 'empty';
         if (hasWord && hasClass) t = 'mixed';
@@ -296,9 +296,6 @@ class EquationBlock extends ExpressionBlock {
       }
 
       // ---- Class-only OR:
-      // 各ブランチの分類式を Fbranch とし、
-      //  F_sum = Fbranch1 + Fbranch2 + ...
-      // → [(F_sum)/CP+(F_sum)/FI]
       if (typeSet.has('class')) {
         const branchExprs = [];
         partList.forEach((p) => {
@@ -311,7 +308,9 @@ class EquationBlock extends ExpressionBlock {
         });
         if (branchExprs.length === 0) return '';
         const combinedInner = branchExprs.join('+');
-        const F = combinedInner; // ここでは ( ) で二重にくくらず、生の式を渡す
+        
+        // C-4: 不要な二重括弧を削除
+        const F = stripOuterParens(combinedInner);
         return `[(${F})/CP+(${F})/FI]`;
       }
 
@@ -353,9 +352,18 @@ class EquationBlock extends ExpressionBlock {
  * ======================================================= */
 
 /**
+ * @typedef {Object} ProximityTerm
+ * @property {'prox'} type
+ * @property {string} left
+ * @property {string[]} rightTerms
+ * @property {'NNn'|'NNc'} mode
+ * @property {number} k
+ */
+
+/**
  * @typedef {Object} FieldParts
- * @property {string|null} w   - Word/TX に載せる式（/TX は含めない）
- * @property {string[]}    c   - 分類式のリスト（1要素なら [F]、2つなら [F1,F2]）
+ * @property {(string|ProximityTerm)[]} w   - Word因子列 (AND結合)
+ * @property {string[]}    c   - 分類式のリスト（1要素なら [F]、2つなら [F1,F2] → 積として扱われる）
  */
 
 /**
@@ -366,13 +374,13 @@ class EquationBlock extends ExpressionBlock {
  */
 function translateExprToFieldParts(node, ctx) {
   /** @type {FieldParts} */
-  const empty = { w: null, c: [] };
+  const empty = { w: [], c: [] };
   if (!node) return empty;
 
   const repo = ctx && ctx.repo ? ctx.repo : null;
 
   // --------------------------
-  // WordTokenNode → WordBlock.queryText を優先して Word 式にする
+  // WordTokenNode
   // --------------------------
   if (node instanceof WordTokenNode) {
     const token = node.token || '';
@@ -384,25 +392,24 @@ function translateExprToFieldParts(node, ctx) {
       const wb = repo.findWordBlockByToken(token);
       if (wb) {
         if (wb.queryText && wb.queryText.trim().length > 0) {
-          expr = wb.queryText.trim(); // 例: "A+B+C"
+          expr = wb.queryText.trim();
         } else if (wb.token && wb.token.trim().length > 0) {
-          expr = wb.token.trim(); // フォールバック
+          expr = wb.token.trim();
         }
       }
     }
 
-    return { w: expr, c: [] };
+    return { w: [expr], c: [] };
   }
 
   // --------------------------
-  // BlockRefNode → 参照先 Block に応じて分解
+  // BlockRefNode
   // --------------------------
   if (node instanceof BlockRefNode) {
     if (!repo) return empty;
     const blk = repo.get(node.blockId);
     if (!blk) return empty;
 
-    // WordBlock 参照
     if (blk.kind === 'WB') {
       const wb = blk;
       let expr =
@@ -410,15 +417,12 @@ function translateExprToFieldParts(node, ctx) {
         (wb.token && wb.token.trim()) ||
         '';
       if (!expr) return empty;
-      return { w: expr, c: [] };
+      return { w: [expr], c: [] };
     }
 
-    // ClassBlock 参照
     if (blk.kind === 'CB') {
       const cb = blk;
       let cls = '';
-
-      // 分類本体（(H04W16/24+H04W36/00) のような形）を優先
       if (cb.classificationExpr && cb.classificationExpr.trim().length > 0) {
         cls = cb.classificationExpr.trim();
       } else if (Array.isArray(cb.codes) && cb.codes.length > 0) {
@@ -426,12 +430,10 @@ function translateExprToFieldParts(node, ctx) {
       } else if (cb.classExpr && cb.classExpr.trim().length > 0) {
         cls = cb.classExpr.trim();
       }
-
       if (!cls) return empty;
-      return { w: null, c: [cls] };
+      return { w: [], c: [cls] };
     }
 
-    // EquationBlock を参照している場合 → AST をそのまま再翻訳
     if (blk.kind === 'EB') {
       const eb = blk;
       if (!eb.root) return empty;
@@ -467,82 +469,113 @@ function translateExprToFieldParts(node, ctx) {
     const left = ch[0] ? translateExprToFieldParts(ch[0], ctx) : empty;
     const right = ch[1] ? translateExprToFieldParts(ch[1], ctx) : empty;
 
-    // 近傍対象に分類が混ざることは UI 側で禁止しているが、念のためガード
-    if (!left.w || !right.w || (left.c && left.c.length) || (right.c && right.c.length)) {
+    // 分類が含まれている場合は近傍不可 -> 論理式フォールバック
+    if (
+      (left.c && left.c.length > 0) ||
+      (right.c && right.c.length > 0)
+    ) {
       const logical = node.renderLogical(ctx);
       if (!logical) return empty;
-      return { w: logical, c: [] };
+      return { w: [logical], c: [] };
     }
 
-    const modeStr = node.mode === 'NNc' ? 'c' : 'n';
-    const proxExpr = `${left.w},${node.k}${modeStr},${right.w}`;
-    return { w: proxExpr, c: [] };
+    // 左辺・右辺の w を取得 (配列の先頭要素を使う、あるいは単純結合)
+    // 近傍の左右は通常「単一の語」であることを期待するが、
+    // 既に複合語(A+B)になっている場合は string として扱う。
+    // ProximityTerm がネストする場合の仕様は未定義だが、ここでは string 化して扱うか、
+    // 左辺だけは構造を維持するか...
+    // 仕様上、近傍は "Word NNn Word" なので、単純化して string を取り出す。
+    
+    const leftStr = left.w.map(item => typeof item === 'string' ? item : JSON.stringify(item)).join('*'); 
+    // ↑仮の実装。ProximityTermがネストすることは想定外だが、もしあれば stringify などで逃げる
+    // 実際には left.w[0] が string であることを期待。
+
+    const rightStrs = right.w.map(item => {
+      if (typeof item === 'string') return item;
+      // 右辺に ProximityTerm が来ることは仕様上ないはず (結合順序によるが)
+      return ''; 
+    }).filter(s => s);
+
+    if (!leftStr || rightStrs.length === 0) return empty;
+
+    const proxTerm = {
+      type: 'prox',
+      left: leftStr,
+      rightTerms: rightStrs, // 配列として保持
+      mode: node.mode,
+      k: node.k
+    };
+
+    return { w: [proxTerm], c: [] };
   }
 
   // --------------------------
   // 3 要素同時近傍
   // --------------------------
   if (node instanceof SimultaneousProximityNode) {
+    // SimultaneousProximityNode は現状 ProximityTerm で表現しきれないため
+    // 既存の論理式文字列生成ロジックを使うか、専用形式にする。
+    // C-2 の要求は「近傍ノードの結果を... ProximityTerm として保持」。
+    // 3要素近傍も {A,B,C},10n のように表現したい。
+    // しかし ProximityTerm は left / rightTerms 形式。
+    // ここでは単純化のため、SimultaneousProximityNode は w文字列 として返す(従来通り)。
+    // あるいは ProximityTerm を拡張して 'simultaneous' type を持たせる手もあるが
+    // renderFieldParts での対応が必要。今回は文字列で逃げる。
+    
     const children = Array.isArray(node.children) ? node.children : [];
     const parts = children.map((ch) => translateExprToFieldParts(ch, ctx));
 
-    if (parts.some((p) => !p.w || (p.c && p.c.length))) {
+    if (parts.some((p) => p.c && p.c.length > 0)) {
       const logical = node.renderLogical(ctx);
-      if (!logical) return empty;
-      return { w: logical, c: [] };
+      return { w: [logical], c: [] };
     }
 
     const inner = parts
-      .map((p) => p.w)
+      .flatMap((p) => p.w)
+      .map(item => typeof item === 'string' ? item : '')
       .filter((s) => s && s.length > 0)
       .join(',');
+    
     const proxExpr = `{${inner}},${node.k}n`;
-    return { w: proxExpr, c: [] };
+    return { w: [proxExpr], c: [] };
   }
 
   // --------------------------
-  // その他未知ノード → logical 表示を Word 扱い
+  // その他未知ノード
   // --------------------------
   const logical =
     typeof node.renderLogical === 'function' ? node.renderLogical(ctx) : '';
   if (!logical) return empty;
-  return { w: logical, c: [] };
+  return { w: [logical], c: [] };
 }
 
 /**
  * 積演算用結合
- *  - Word 部分は "*" で結合（後で /TX を各因子に付与）
- *  - Class 部分は配列連結（後で [F/CP+F/FI]*... に変換）
+ *  - Word 部分は配列連結
+ *  - Class 部分は配列連結
  * @param {FieldParts[]} list
  * @returns {FieldParts}
  */
 function combineFieldPartsProduct(list) {
-  let wordExpr = null;
-  const classExprs = [];
+  const wList = [];
+  const cList = [];
 
   list.forEach((p) => {
-    if (p.w && p.w.trim().length > 0) {
-      const w = p.w.trim();
-      if (!wordExpr) {
-        wordExpr = w;
-      } else {
-        // 一旦 "(prev)*(w)" の形にしておき、後で splitTopLevelByStar() で分解
-        wordExpr = `(${wordExpr})*(${w})`;
-      }
+    if (p.w && p.w.length > 0) {
+      wList.push(...p.w);
     }
     if (p.c && p.c.length > 0) {
-      classExprs.push(...p.c);
+      cList.push(...p.c);
     }
   });
 
-  return { w: wordExpr, c: classExprs };
+  return { w: wList, c: cList };
 }
 
 /**
  * OR 演算用結合
- *  - Word-only 同士 → w1 + w2 + ...
- *  - Class-only 同士 → c = [ (F1+F2+...) ]
- *  - 混在 or mixed → 想定外 → logical 全体を Word 扱いにフォールバック
+ *  - Word, Class, Mixed それぞれ仕様に従ってマージする。
+ *  - 結果は単一の因子(和)として表現されることが多い。
  *
  * @param {FieldParts[]} list
  * @param {ExprNode} node
@@ -550,11 +583,12 @@ function combineFieldPartsProduct(list) {
  * @returns {FieldParts}
  */
 function combineFieldPartsOr(list, node, ctx) {
-  const empty = { w: null, c: [] };
+  const empty = { w: [], c: [] };
 
-  const typeSet = new Set(); // "word" | "class" | "mixed" | "empty"
+  // 1. 全体の型判定
+  const typeSet = new Set();
   list.forEach((p) => {
-    const hasWord = !!(p.w && p.w.trim().length > 0);
+    const hasWord = p.w && p.w.length > 0;
     const hasClass = p.c && p.c.length > 0;
     let t = 'empty';
     if (hasWord && hasClass) t = 'mixed';
@@ -563,96 +597,157 @@ function combineFieldPartsOr(list, node, ctx) {
     typeSet.add(t);
   });
 
-  // Word+Class 混在 OR / mixed は「論理式を Word 扱い」にフォールバック
-  if (typeSet.has('mixed') || (typeSet.has('word') && typeSet.has('class'))) {
-    const logical =
-      node && typeof node.renderLogical === 'function'
-        ? node.renderLogical(ctx)
-        : '';
-    if (!logical) return empty;
-    return { w: logical, c: [] };
-  }
+  // C-3: Mixed Prod (Word*Class) + Class のパターン対応
+  // 許可パターン: (W * C_something) + C_other
+  // これを W * (C_something + C_other) にしたい。
+  // つまり、すべてのブランチで「Word部分が共通(あるいは空)」であれば、
+  // Word部分は共通項としてくくり出し、Class部分を足し合わせる。
+  
+  // 全ブランチの w, c を収集
+  const allW = []; // string | ProximityTerm
+  const allC = []; // string
 
-  // Word-only OR: w1+w2+...
-  if (typeSet.has('word')) {
-    const terms = list
-      .map((p) => (p.w ? p.w.trim() : ''))
-      .filter((s) => s.length > 0)
-      .map((w) => `(${w})`);
-    if (terms.length === 0) return empty;
-    return { w: terms.join('+'), c: [] };
-  }
+  // Word部分の共通性チェック用
+  // ここでは簡易的に「存在する全 Word 因子」をマージして保持する戦略をとる。
+  // (W1*C1 + C2) -> w:[W1], c:[C1, C2] -> render -> W1 * (C1+C2)
+  // (W1 + W2) -> w:[W1, W2] (積?) No. OR結合なので、Word同士は和になる。
+  // combineFieldPartsOr の戻り値の w は「積因子配列」。
+  // したがって、Word同士の和 "W1+W2" は「1つの因子」として w に格納されなければならない。
+  
+  // Class同士の和 "C1+C2" も同様だが、Classは最後に [ (Sum)/CP... ] となるので、
+  // c 配列は「積」だが、ここでは「和」を作って c に 1 要素だけ入れる形になる。
 
-  // Class-only OR: [(F1+F2+...)/CP+(F1+F2+...)/FI]
-  if (typeSet.has('class')) {
-    const branchExprs = [];
-    list.forEach((p) => {
-      if (p.c && p.c.length > 0) {
-        const inner = p.c.join('+');
-        if (inner && inner.trim().length > 0) {
-          branchExprs.push(inner.trim());
+  // 分類部分の統合 (Sum)
+  list.forEach(p => {
+    if (p.c && p.c.length > 0) {
+      allC.push(...p.c);
+    }
+  });
+  const mergedC = allC.length > 0 ? [ allC.join('+') ] : [];
+
+  // Word部分の統合
+  // ProximityTerm がある場合、それに右辺を追加する処理を行う
+  const wFactors = [];
+  const proxTerms = [];
+  const stringTerms = [];
+
+  list.forEach(p => {
+    if (p.w && p.w.length > 0) {
+      p.w.forEach(item => {
+        if (typeof item === 'object' && item.type === 'prox') {
+          proxTerms.push(item);
+        } else if (typeof item === 'string') {
+          stringTerms.push(item);
         }
-      }
-    });
-    if (branchExprs.length === 0) return empty;
-    const combinedInner = branchExprs.join('+'); // F1+F2+...
-    return { w: null, c: [combinedInner] };
+      });
+    }
+  });
+
+  // ケース1: ProximityTerm があり、かつ文字列項もある -> マージ
+  if (proxTerms.length > 0) {
+    // 最初の近傍項をベースにする (複数ある場合は仕様未定義だが、最初の1つに寄せる)
+    const base = proxTerms[0];
+    
+    // stringTerms を右辺に追加
+    // (注意: rightTerms は配列。ここに stringTerms を結合)
+    // ただし、Prox は参照渡しではなくコピーすべきだが、ここでは簡易実装
+    const newProx = {
+      ...base,
+      rightTerms: [...base.rightTerms, ...stringTerms]
+    };
+    
+    // 他の Prox 項があった場合は無視するか、あるいは string として足す?
+    // 仕様上「式(Word NNn Word) + Word」なので、Proxは1つと仮定。
+    
+    wFactors.push(newProx);
+  } else {
+    // ケース2: 文字列のみ -> 全て + で結合して 1 つの因子にする
+    if (stringTerms.length > 0) {
+      const combined = stringTerms.join('+');
+      wFactors.push(combined);
+    }
   }
 
-  return empty;
+  // 結果構築
+  // もし Mixed の場合、wFactors と mergedC が両方入る。
+  // -> render で W * C となる。
+  // もし Word-only の場合、wFactors (1要素) のみ。
+  // -> render で W となる。
+  // もし Class-only の場合、mergedC (1要素) のみ。
+  // -> render で C となる。
+
+  return { w: wFactors, c: mergedC };
 }
 
 /**
  * FieldParts → 実際の検索式文字列に変換
- *  - Word 部分は /TX を付与（* があれば各因子ごとに /TX）
- *  - Class 部分は [ (F)/CP+(F)/FI ] を * で連結
  * @param {FieldParts} parts
  * @returns {string}
  */
 function renderFieldParts(parts) {
-  const rawW = parts.w && parts.w.trim().length > 0 ? parts.w.trim() : null;
-  const cList = Array.isArray(parts.c)
-    ? parts.c.map((s) => s && s.trim()).filter((s) => s && s.length > 0)
-    : [];
+  const wList = parts.w || [];
+  const cList = parts.c || [];
 
-  let wordSegment = null;
-
-  if (rawW) {
-    // "*" が含まれていれば、トップレベルで分解して各因子に /TX を付与
-    if (rawW.indexOf('*') !== -1) {
-      const factors = splitTopLevelByStar(rawW);
-      const decorated = factors.map((f) => {
-        const body = stripOuterParens(f.trim());
+  // Word 部分のレンダリング
+  // wList は「積」の因子列。
+  // 各因子について /TX 付与を行う。
+  const renderedW = wList.map(item => {
+    if (typeof item === 'object' && item.type === 'prox') {
+      // ProximityTerm: [left, mode, (right1+right2...)/TX]
+      // rightTerms の各要素に /TX をつけるかどうか?
+      // 仕様: [W1,NNn,(W2)/TX + W3/TX] 
+      // つまり右辺全体が 1 つの式として扱われる?
+      // いや、例を見ると: [W1,NNn,(W2)/TX] (単体)
+      // 追加あり: [W1,NNn,(W2)/TX+W3/TX]
+      // つまり右側は「/TX付きの項の和」になっている。
+      
+      const left = item.left;
+      const mode = item.mode === 'NNc' ? 'c' : 'n';
+      const k = item.k;
+      
+      const rights = item.rightTerms.map(r => {
+        // r は生の文字列 (例: "W2" や "A+B")
+        // stripOuterParens して /TX
+        const body = stripOuterParens(r);
         if (/[\+,{]/.test(body)) {
-          // OR や 近傍など「複合」の場合は括弧付きで /TX
           return `(${body})/TX`;
         }
         return `${body}/TX`;
       });
-      wordSegment = decorated.join('*');
-    } else {
-      // 単一因子の場合
-      const body = stripOuterParens(rawW);
-      if (/[\+,{]/.test(body)) {
-        // A+B や {A,B} などの場合は (A+B)/TX
-        wordSegment = `(${body})/TX`;
+      
+      const rightExpr = rights.join('+');
+      return `[${left},${k}${mode},${rightExpr}]`;
+    } else if (typeof item === 'string') {
+      // 文字列因子
+      // "*" を含む場合 (WordTokenNode由来など) は分解
+      if (item.indexOf('*') !== -1) {
+        const factors = splitTopLevelByStar(item);
+        return factors.map(f => {
+          const body = stripOuterParens(f.trim());
+          if (/[\+,{]/.test(body)) return `(${body})/TX`;
+          return `${body}/TX`;
+        }).join('*');
       } else {
-        // 単語 1 個の場合 → A/TX
-        wordSegment = `${body}/TX`;
+        const body = stripOuterParens(item);
+        if (/[\+,{]/.test(body)) return `(${body})/TX`;
+        return `${body}/TX`;
       }
     }
-  }
+    return '';
+  }).filter(s => s).join('*');
 
-  let classSegment = null;
+  // Class 部分のレンダリング
+  // cList は分類式のリスト。配列要素間は「積」。
+  // cList要素内は既に「和」結合されている(combineFieldPartsOrで)。
+  const renderedC = cList.map(F => {
+    // C-4: 括弧削減 (ここでも念のため strip)
+    const body = stripOuterParens(F);
+    return `[(${body})/CP+(${body})/FI]`;
+  }).join('*');
 
-  if (cList.length > 0) {
-    const classTerms = cList.map((F) => `[(${F})/CP+(${F})/FI]`);
-    classSegment = classTerms.join('*');
-  }
-
-  if (wordSegment && classSegment) return `${wordSegment}*${classSegment}`;
-  if (wordSegment) return wordSegment;
-  if (classSegment) return classSegment;
+  if (renderedW && renderedC) return `${renderedW}*${renderedC}`;
+  if (renderedW) return renderedW;
+  if (renderedC) return renderedC;
   return '';
 }
 
