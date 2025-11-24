@@ -14,6 +14,8 @@ class BlockRepository {
     this.tokenToClassId = new Map();
     /** @type {Map<string, string>} expressionKey -> WordBlock.id */
     this.expressionKeyToWordId = new Map();
+    /** @type {Map<string, string>} expressionKey -> ClassBlock.id */
+    this.expressionKeyToClassId = new Map();
 
     this.counters = {
       WB: 0,
@@ -37,8 +39,13 @@ class BlockRepository {
       if (block.expressionKey) {
         this.expressionKeyToWordId.set(block.expressionKey, block.id);
       }
-    } else if (block.kind === 'CB' && block.token) {
-      this.tokenToClassId.set(block.token, block.id);
+    } else if (block.kind === 'CB') {
+      if (block.token) {
+        this.tokenToClassId.set(block.token, block.id);
+      }
+      if (block.expressionKey) {
+        this.expressionKeyToClassId.set(block.expressionKey, block.id);
+      }
     }
   }
 
@@ -65,8 +72,13 @@ class BlockRepository {
       if (blk.expressionKey) {
         this.expressionKeyToWordId.delete(blk.expressionKey);
       }
-    } else if (blk.kind === 'CB' && blk.token) {
-      this.tokenToClassId.delete(blk.token);
+    } else if (blk.kind === 'CB') {
+      if (blk.token) {
+        this.tokenToClassId.delete(blk.token);
+      }
+      if (blk.expressionKey) {
+        this.expressionKeyToClassId.delete(blk.expressionKey);
+      }
     }
 
     this.blocks.delete(id);
@@ -183,6 +195,22 @@ class BlockRepository {
   }
 
   /**
+   * expressionKey に紐づく ClassBlock を返す
+   * @param {string} expressionKey
+   * @returns {ClassBlock|undefined}
+   */
+  findClassBlockByExpressionKey(expressionKey) {
+    if (!expressionKey) return undefined;
+    const id = this.expressionKeyToClassId.get(expressionKey);
+    if (!id) return undefined;
+    const blk = this.blocks.get(id);
+    if (blk && blk.kind === 'CB') {
+      return blk;
+    }
+    return undefined;
+  }
+
+  /**
    * token に紐づく ClassBlock を返す
    * @param {string} token
    * @returns {ClassBlock|undefined}
@@ -252,10 +280,15 @@ class BlockRepository {
       ? `(${variants.join('+')})`
       : `(${expressionKey})`;
 
+    // label: variants[0]を優先、なければdisplayLabel、それもなければexpressionKey
+    const label = (variants && variants.length > 0) 
+      ? variants[0] 
+      : (displayLabel || expressionKey);
+
     // WordBlock作成
     const wb = new WordBlock(
       id,
-      displayLabel || expressionKey, // labelはdisplayLabelまたはexpressionKey
+      label,
       randomToken || id, // tokenはランダムIDまたはid
       queryText,
       expressionKey,
@@ -317,6 +350,7 @@ class BlockRepository {
     this.tokenToWordId.clear();
     this.tokenToClassId.clear();
     this.expressionKeyToWordId.clear();
+    this.expressionKeyToClassId.clear();
     this.counters = {
       WB: 0,
       CB: 0,

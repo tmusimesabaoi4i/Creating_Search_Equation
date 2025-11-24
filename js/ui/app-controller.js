@@ -463,7 +463,7 @@ class AppController {
 
   handleDeleteBlock(block) {
     if (!block) return;
-    const ok = window.confirm(
+    const ok = window.showToast(
       `ブロックを削除しますか？\n${block.kind}: ${block.label || block.id}`
     );
     if (!ok) return;

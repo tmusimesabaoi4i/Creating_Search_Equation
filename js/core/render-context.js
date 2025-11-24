@@ -43,11 +43,12 @@ class RenderContext {
     if (block.kind === 'CB') {
       const cb = block;
       if (cb.searchExpr) return cb.searchExpr;
-      // 念のため fallback
+      // フォールバック（searchExprが空の古いデータ用）
       if (cb.codes && cb.codes.length) {
         const inner = cb.codes.join('+');
-        const cls = `(${inner})`;
-        return `[${cls}/CP+${cls}/FI]`;
+        // 要素数に応じて括弧を付ける（ClassBlock._recalcExpressionsと同じルール）
+        const classificationExpr = cb.codes.length >= 2 ? `(${inner})` : inner;
+        return `[${classificationExpr}]`;
       }
       return '';
     }

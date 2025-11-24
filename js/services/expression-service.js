@@ -204,7 +204,9 @@ class ExpressionService {
               return;
             }
             const id = this.repo.findOrCreateIdForLabel(token, 'CB');
-            const cb = new ClassBlock(id, token, token, [token]);
+            const codes = [token];
+            const label = codes[0]; // 表示名はcodes[0]
+            const cb = new ClassBlock(id, label, token, codes);
             this.repo.upsert(cb);
           }
         } else {
@@ -363,9 +365,10 @@ class ExpressionService {
    *   expr         → ランダム5文字（ClassTokenGenerator）
    *
    * ClassBlock は、
-   *   codes: [ "H04W36/00", "H04W24/00" ]
-   *   classificationExpr: "(H04W36/00+H04W24/00)"
-   *   searchExpr: "[(H04W36/00+H04W24/00)/CP+(H04W36/00+H04W24/00)/FI]"
+   *   codes: [ "H04W36/00", "H04W24/00" ] （完全な分類トークン）
+   *   classificationExpr: "(H04W36/00+H04W24/00)" （2つ以上なら括弧付き）
+   *   searchExpr: "[H04W36/00+H04W24/00]" （/CP /FIの二重付けなし）
+   *   label: codes[0] （表示名は先頭分類コード）
    *
    * @param {string|null} name
    * @param {ExprNode} expr
@@ -392,7 +395,8 @@ class ExpressionService {
       token = this.classTokenGen.generate();
     }
 
-    const label = token || codes[0];
+    // 表示名はcodes[0]を優先（提案に従う）
+    const label = codes[0] || token;
 
     // token で既存 ClassBlock を優先検索
     let cb = this.repo.findClassBlockByToken(token);

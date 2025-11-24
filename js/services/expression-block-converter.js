@@ -1,18 +1,18 @@
 // js/services/expression-block-converter.js
-// 式からブロック生成（新機能1の中核）
+// 式からブロック生成（3レイヤ設計）
 
 /**
  * 検索式からブロックを自動生成するコンバータークラス
  * 
- * 役割:
- * - 入力された検索式を * で因子に分解
- * - 各因子を解析して Word/Class/Equation ブロックを生成
- * - 近傍式の内部から Word を抽出
+ * 設計思想（3レイヤ）:
+ * 1. 式文字列レイヤ: 入力式を正規化し、トップレベルの*で因子文字列に分解
+ * 2. 因子分類レイヤ: 各因子文字列がWord/Class/近傍式かを文字列パターンで判定
+ * 3. ブロック生成レイヤ: 因子の種別に応じてブロックを生成
  * 
- * 設計思想:
+ * 重要な方針:
  * - WordBlockはWord式単位で作成（トークン単位ではない）
  * - tokenはランダムID、expressionKeyで意味的識別
- * - 正規化は2段階：軽量（expressionKey）と重い（variants生成）
+ * - 分割モードではEquationBlockは一切生成しない
  */
 class ExpressionBlockConverter {
   /**
@@ -25,25 +25,33 @@ class ExpressionBlockConverter {
     this.repo = repo;
     this.ctx = ctx;
     this.wordNormalizer = new WordNormalizer();
+    this.exprNormalizer = new ExpressionNormalizer();
     this.wordTokenGenerator = new WordTokenGenerator(repo, 8);
+    
+    // 内部状態（処理中の式情報）
+    this.inputed_qu_raw = '';      // 入力そのまま
+    this.inputed_qu_norm = '';    // 内部整形済み（記号半角化・スペース除去）
+    this.inputed_qu_class = '';   // ブロック分解の基準となる式（分解対象式）
+    this.joinedBlockList = [];
+    this.factorMetaList = [];
   }
 
   /**
-   * 検索式からブロックを生成（新機能1のメイン処理）
+   * 検索式からブロックを生成（分割モード専用）
+   * EquationBlockは生成せず、WordBlock/ClassBlockのみ生成
    * 
    * @param {string} rawText - 入力された検索式
-   * @returns {{errors: string[], createdBlocks: {words: string[], classes: string[], equations: string[]}}}
+   * @returns {{errors: string[], createdBlocks: {words: string[], classes: string[]}}}
    * 
-   * 例: "(A+B)/TX*(A + B + C)/TX*(F + D)/TX*S/TX"
-   *  → Expression blocks: 4個
-   *  → Word blocks: A, B, C, F, D, S など
+   * 例: "(antenna+アンテナ)/TX*(ris+反射板)/TX*基地局/TX*[H04W12/00/CP+H04W12/00/FI]"
+   *  → WordBlocks: (antenna+アンテナ), (ris+反射板), 基地局
+   *  → ClassBlocks: H04W12/00/CP+H04W12/00/FI
    */
   generateBlocksFromEquationInput(rawText) {
     const errors = [];
     const createdBlocks = {
       words: [],
-      classes: [],
-      equations: []
+      classes: []
     };
 
     if (!rawText || !rawText.trim()) {
@@ -52,196 +60,338 @@ class ExpressionBlockConverter {
     }
 
     try {
-      // 1. 全体を1つの式としてパース
-      const lexer = new Lexer(rawText);
-      const parser = new Parser(lexer);
-      const rootExpr = parser.parseExpr();
+      // ========================================
+      // レイヤ1: 式文字列レイヤ
+      // ========================================
+      this._initializeExpressionState(rawText);
+      this._splitFactorsByProduct();
 
-      if (!rootExpr) {
-        throw new Error('式が解析できませんでした。');
-      }
+      // ========================================
+      // レイヤ2: 因子分類レイヤ
+      // ========================================
+      this._classifyFactors();
 
-      // 2. * で因子に分解（トップレベルの積演算）
-      const factors = this._splitByProduct(rootExpr);
-
-      // 3. 各因子を解析してブロック生成
-      factors.forEach((factor, index) => {
+      // ========================================
+      // レイヤ3: ブロック生成レイヤ
+      // ========================================
+      this.factorMetaList.forEach((factorMeta, index) => {
         try {
-          const result = this._processFactor(factor, index);
+          const result = this._generateBlocksFromFactor(factorMeta);
           
-          if (result.wordIds) createdBlocks.words.push(...result.wordIds);
-          if (result.classIds) createdBlocks.classes.push(...result.classIds);
-          if (result.equationId) createdBlocks.equations.push(result.equationId);
+          if (result.wordIds) {
+            createdBlocks.words.push(...result.wordIds);
+          }
+          if (result.classIds) {
+            createdBlocks.classes.push(...result.classIds);
+          }
           
         } catch (e) {
-          errors.push(`因子 ${index + 1}: ${e.message || e}`);
+          errors.push(`因子 ${index + 1} (${factorMeta.raw.substring(0, 20)}...): ${e.message || e}`);
         }
       });
 
     } catch (e) {
-      errors.push(`式の解析エラー: ${e.message || e}`);
+      errors.push(`式の処理エラー: ${e.message || e}`);
     }
 
     return { errors, createdBlocks };
   }
 
+  // ========================================
+  // レイヤ1: 式文字列レイヤ
+  // ========================================
+
   /**
-   * 式を * で因子に分解
-   * @param {ExprNode} expr
-   * @returns {ExprNode[]}
+   * 式の状態を初期化
+   * @param {string} rawText
    * @private
    */
-  _splitByProduct(expr) {
-    if (!expr) return [];
-
-    // LogicalNode('*') でない場合は、そのまま1要素として返す
-    if (!(expr instanceof LogicalNode) || expr.op !== '*') {
-      return [expr];
-    }
-
-    // * を再帰的に展開
-    const factors = [];
-    const stack = [expr];
-
-    while (stack.length > 0) {
-      const node = stack.pop();
-      
-      if (node instanceof LogicalNode && node.op === '*') {
-        // 子要素を逆順でスタックに追加（順序保持のため）
-        for (let i = node.children.length - 1; i >= 0; i--) {
-          stack.push(node.children[i]);
-        }
-      } else {
-        factors.push(node);
-      }
-    }
-
-    return factors;
+  _initializeExpressionState(rawText) {
+    this.inputed_qu_raw = rawText;
+    
+    // 内部整形（軽量）: 記号半角化、スペース削除
+    this.inputed_qu_norm = this.exprNormalizer.normalizeInline(rawText);
+    this.inputed_qu_norm = this.exprNormalizer.removeSpaces(this.inputed_qu_norm);
+    
+    // ブロック分解の基準となる式（分解対象式）として明示的にコピー
+    // 将来的にinputed_qu_normとinputed_qu_classを分離する可能性を考慮
+    this.inputed_qu_class = this.inputed_qu_norm;
+    
+    this.joinedBlockList = [];
+    this.factorMetaList = [];
   }
 
   /**
-   * 因子を解析してブロックを生成
-   * @param {ExprNode} factor
-   * @param {number} index
-   * @returns {{wordIds?: string[], classIds?: string[], equationId?: string}}
+   * 正規化済み式をトップレベルの*で因子分解
+   * 括弧ネスト（(), [], {}）を考慮する
+   * 
+   * 分解対象式としてinputed_qu_classを使用（責務を明確化）
    * @private
    */
-  _processFactor(factor, index) {
+  _splitFactorsByProduct() {
+    const normalized = this.inputed_qu_class;
+    const factors = [];
+    let currentFactor = '';
+    let depth = 0; // 括弧ネストの深さ
+
+    for (let i = 0; i < normalized.length; i++) {
+      const ch = normalized[i];
+
+      // 開き括弧
+      if (ch === '(' || ch === '[' || ch === '{') {
+        depth++;
+        currentFactor += ch;
+      }
+      // 閉じ括弧
+      else if (ch === ')' || ch === ']' || ch === '}') {
+        depth = Math.max(0, depth - 1);
+        currentFactor += ch;
+      }
+      // トップレベルの*
+      else if (ch === '*' && depth === 0) {
+        // 因子の区切り
+        if (currentFactor.trim().length > 0) {
+          factors.push(currentFactor.trim());
+        }
+        currentFactor = '';
+      }
+      // その他の文字
+      else {
+        currentFactor += ch;
+      }
+    }
+
+    // 最後の因子
+    if (currentFactor.trim().length > 0) {
+      factors.push(currentFactor.trim());
+    }
+
+    this.joinedBlockList = factors;
+  }
+
+  // ========================================
+  // レイヤ2: 因子分類レイヤ
+  // ========================================
+
+  /**
+   * 各因子を文字列パターンで分類
+   * @private
+   */
+  _classifyFactors() {
+    this.factorMetaList = this.joinedBlockList.map(factorStr => {
+      const kind = this._detectFactorKind(factorStr);
+      return {
+        raw: factorStr,
+        kind: kind
+      };
+    });
+  }
+
+  /**
+   * 因子文字列の種別を判定
+   * @param {string} factorStr
+   * @returns {'proximity'|'class'|'word'|'unknown'}
+   * @private
+   */
+  _detectFactorKind(factorStr) {
+    // 1. 近傍式: {XXX},NNn/TX のようなパターン
+    if (this._isProximityFactor(factorStr)) {
+      return 'proximity';
+    }
+
+    // 2. 分類式: [XXX] で囲まれており、/CPまたは/FIを含む
+    if (this._isClassFactor(factorStr)) {
+      return 'class';
+    }
+
+    // 3. Word式: /TXを含み、[]や{}が含まれていない
+    if (this._isWordFactor(factorStr)) {
+      return 'word';
+    }
+
+    // 4. その他（想定外）
+    return 'unknown';
+  }
+
+  /**
+   * 近傍式かどうか判定
+   * @param {string} str
+   * @returns {boolean}
+   * @private
+   */
+  _isProximityFactor(str) {
+    // {XXX},NNn/TX のようなパターン
+    // または {XXX},NNn/CP, {XXX},NNn/FI
+    return /^\{.+\},\d+n\/(TX|CP|FI)$/i.test(str);
+  }
+
+  /**
+   * 分類式かどうか判定
+   * @param {string} str
+   * @returns {boolean}
+   * @private
+   */
+  _isClassFactor(str) {
+    // [XXX] で囲まれている
+    if (!str.startsWith('[') || !str.endsWith(']')) {
+      return false;
+    }
+
+    // /CP または /FI を含む
+    return /\/(CP|FI)/i.test(str);
+  }
+
+  /**
+   * Word式かどうか判定
+   * @param {string} str
+   * @returns {boolean}
+   * @private
+   */
+  _isWordFactor(str) {
+    // /TX を含む
+    if (!/\/TX/i.test(str)) {
+      return false;
+    }
+
+    // [] や {} が含まれていない
+    if (/[\[\]{}]/.test(str)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  // ========================================
+  // レイヤ3: ブロック生成レイヤ
+  // ========================================
+
+  /**
+   * 因子からブロックを生成
+   * @param {{raw: string, kind: string}} factorMeta
+   * @returns {{wordIds?: string[], classIds?: string[]}}
+   * @private
+   */
+  _generateBlocksFromFactor(factorMeta) {
     const result = {
       wordIds: [],
-      classIds: [],
-      equationId: null
+      classIds: []
     };
 
-    // 因子の種別を判定
-    const factorType = this._classifyFactor(factor);
-
-    switch (factorType) {
+    switch (factorMeta.kind) {
       case 'word':
-        // Word のみの式 → WordBlock + EquationBlock
-        result.wordIds = this._extractAndCreateWords(factor);
-        result.equationId = this._createEquationBlock(factor, `E${index + 1}`, true);
+        result.wordIds = this._generateWordBlockFromFactor(factorMeta.raw);
         break;
 
       case 'class':
-        // Class のみの式 → ClassBlock + EquationBlock
-        result.classIds = this._extractAndCreateClasses(factor);
-        result.equationId = this._createEquationBlock(factor, `E${index + 1}`, false);
+        result.classIds = this._generateClassBlockFromFactor(factorMeta.raw);
         break;
 
       case 'proximity':
-        // 近傍式 → 内部の Word 抽出 + EquationBlock
-        result.wordIds = this._extractWordsFromProximity(factor);
-        result.equationId = this._createEquationBlock(factor, `P${index + 1}`, true);
+        result.wordIds = this._generateWordBlocksFromProximity(factorMeta.raw);
         break;
 
-      case 'mixed':
-        // 混在式 → そのまま EquationBlock
-        result.equationId = this._createEquationBlock(factor, `E${index + 1}`, false);
-        break;
+      case 'unknown':
+        throw new Error(`想定外の因子形式です: ${factorMeta.raw}`);
 
       default:
-        result.equationId = this._createEquationBlock(factor, `E${index + 1}`, false);
+        throw new Error(`不明な因子種別: ${factorMeta.kind}`);
     }
 
     return result;
   }
 
+  // ========================================
+  // Word因子 → WordBlock生成
+  // ========================================
+
   /**
-   * 因子の種別を判定
-   * @param {ExprNode} factor
-   * @returns {'word'|'class'|'proximity'|'mixed'|'unknown'}
+   * Word因子からWordBlockを生成
+   * @param {string} factorStr - 例: "(antenna+アンテナ)/TX"
+   * @returns {string[]} - 作成したWordBlockのID配列
    * @private
    */
-  _classifyFactor(factor) {
-    // 近傍ノード
-    if (factor instanceof ProximityNode || factor instanceof SimultaneousProximityNode) {
-      return 'proximity';
+  _generateWordBlockFromFactor(factorStr) {
+    // 1. フィールドタグを剥がす (/TX など)
+    const factorWordCore = this._stripFieldTag(factorStr);
+
+    // 2. 括弧を外す
+    const wordExpr = this._stripOuterParens(factorWordCore);
+
+    if (!wordExpr || wordExpr.trim().length === 0) {
+      return [];
     }
 
-    // Word/Class の判定
-    const parts = translateExprToFieldParts(factor, this.ctx);
-    const hasWord = Array.isArray(parts.w) && parts.w.length > 0;
-    const hasClass = Array.isArray(parts.c) && parts.c.length > 0;
+    // 3. WordBlock作成または再利用
+    const wordId = this._createOrReuseWordBlock(wordExpr);
 
-    if (hasWord && hasClass) return 'mixed';
-    if (hasWord) return 'word';
-    if (hasClass) return 'class';
-    
-    return 'unknown';
+    return wordId ? [wordId] : [];
   }
 
   /**
-   * 因子からWord式文字列を抽出
-   * @param {ExprNode} factor
-   * @returns {string|null} - Word式文字列（例: "A+B"）、またはnull
+   * フィールドタグを除去 (/TX, /CP, /FI)
+   * @param {string} str
+   * @returns {string}
    * @private
    */
-  _extractWordExpressionString(factor) {
-    if (!factor) return null;
+  _stripFieldTag(str) {
+    return str.replace(/\/(TX|CP|FI)$/i, '');
+  }
 
-    // translateExprToFieldPartsでWord/Class部分を取得
-    const parts = translateExprToFieldParts(factor, this.ctx);
-    
-    // Word部分がない場合はnull
-    if (!Array.isArray(parts.w) || parts.w.length === 0) {
-      return null;
+  /**
+   * 最外周の括弧を除去
+   * @param {string} str
+   * @returns {string}
+   * @private
+   */
+  _stripOuterParens(str) {
+    if (!str) return '';
+    let stripped = str.trim();
+
+    while (stripped.startsWith('(') && stripped.endsWith(')')) {
+      // 括弧が対応しているかチェック
+      let depth = 0;
+      let valid = true;
+
+      for (let i = 0; i < stripped.length; i++) {
+        if (stripped[i] === '(') depth++;
+        if (stripped[i] === ')') depth--;
+        if (depth === 0 && i !== stripped.length - 1) {
+          valid = false;
+          break;
+        }
+      }
+
+      if (valid && depth === 0) {
+        stripped = stripped.slice(1, -1).trim();
+      } else {
+        break;
+      }
     }
 
-    // Word部分を文字列に変換
-    // parts.w は [string | ProximityTerm, ...] の配列
-    // ここではシンプルに文字列のみを結合（Proximityは後で別処理）
-    const wordStrings = parts.w.filter(item => typeof item === 'string');
-    
-    if (wordStrings.length === 0) {
-      return null;
-    }
-
-    // + で結合してWord式文字列を作成
-    return wordStrings.join('+');
+    return stripped;
   }
 
   /**
    * Word式文字列からWordBlockを作成または再利用
-   * @param {string} wordExprString - Word式文字列（例: "A+B"）
-   * @returns {string|null} - 作成または再利用したWordBlockのID、またはnull
+   * @param {string} wordExpr - 例: "antenna+アンテナ"
+   * @returns {string|null} - WordBlockのID、またはnull
    * @private
    */
-  _createOrReuseWordBlock(wordExprString) {
-    if (!wordExprString || typeof wordExprString !== 'string') {
+  _createOrReuseWordBlock(wordExpr) {
+    if (!wordExpr || typeof wordExpr !== 'string') {
       return null;
     }
 
     // 1. expressionKey を生成（軽量正規化）
-    const expressionKey = this.wordNormalizer.buildExpressionKey(wordExprString);
-    
+    const expressionKey = this.wordNormalizer.buildExpressionKey(wordExpr);
+
     if (!expressionKey) {
       return null;
     }
 
     // 2. 既存のWordBlockを検索
     let wb = this.repo.findWordBlockByExpressionKey(expressionKey);
-    
+
     if (wb) {
       // 既存のWordBlockを再利用
       return wb.id;
@@ -249,11 +399,11 @@ class ExpressionBlockConverter {
 
     // 3. 新規作成
     // 外部整形：バリエーション生成（重い処理）
-    const variants = this.wordNormalizer.normalizeForWordBlock(wordExprString);
-    
+    const variants = this.wordNormalizer.normalizeForWordBlock(wordExpr);
+
     // displayLabel生成
     const displayLabel = this.wordNormalizer.buildDisplayLabel(variants);
-    
+
     // ランダムtoken生成
     const randomToken = this.wordTokenGenerator.generate();
 
@@ -272,91 +422,169 @@ class ExpressionBlockConverter {
     }
   }
 
+  // ========================================
+  // Class因子 → ClassBlock生成
+  // ========================================
+
   /**
-   * 因子から Word を抽出して WordBlock 作成（Word式単位）
-   * @param {ExprNode} factor
-   * @returns {string[]} - 作成した WordBlock の ID 配列
+   * Class因子からClassBlockを生成
+   * @param {string} factorStr - 例: "[H04W12/00/CP+H04W12/00/FI]"
+   * @returns {string[]} - 作成したClassBlockのID配列
    * @private
    */
-  _extractAndCreateWords(factor) {
-    const wordIds = [];
-
-    // Word式文字列を抽出
-    const wordExprString = this._extractWordExpressionString(factor);
-    
-    if (!wordExprString) {
-      return wordIds;
+  _generateClassBlockFromFactor(factorStr) {
+    // 1. 外側の [] を外す
+    let classCore = factorStr.trim();
+    if (classCore.startsWith('[') && classCore.endsWith(']')) {
+      classCore = classCore.slice(1, -1).trim();
     }
 
-    // WordBlock作成または再利用
-    const wordId = this._createOrReuseWordBlock(wordExprString);
-    
-    if (wordId) {
-      wordIds.push(wordId);
+    if (!classCore || classCore.length === 0) {
+      return [];
     }
 
-    return wordIds;
+    // 2. これを1つの分類ブロック式として扱う
+    // 例: "H04W12/00/CP+H04W12/00/FI"
+    const classId = this._createOrReuseClassBlock(classCore);
+
+    return classId ? [classId] : [];
   }
 
   /**
-   * 因子から Class を抽出して ClassBlock 作成
-   * @param {ExprNode} factor
-   * @returns {string[]} - 作成した ClassBlock の ID 配列
+   * Class式文字列からClassBlockを作成または再利用
+   * 
+   * 新しいポリシー:
+   * - classExprを+でトップレベル分割してcodes配列を作る
+   * - 内部整形（全角→半角、空白削除など）はExpressionNormalizerと同じルール
+   * - expressionKeyは正規化したcodesをソートして+結合
+   * - labelはcodes[0]を表示名に
+   * 
+   * @param {string} classExpr - 例: "H04W12/00/CP+H04W12/00/FI"
+   * @returns {string|null} - ClassBlockのID、またはnull
    * @private
    */
-  _extractAndCreateClasses(factor) {
-    const classIds = [];
-    const tokens = new Set();
-    factor.collectWordTokens(tokens);
+  _createOrReuseClassBlock(classExpr) {
+    if (!classExpr || typeof classExpr !== 'string') {
+      return null;
+    }
 
-    tokens.forEach(token => {
-      if (!token || token.trim().length === 0) return;
+    // 1. 内部整形（全角→半角、空白削除）
+    const normalized = this.exprNormalizer.normalizeInline(classExpr);
+    const normalizedClean = this.exprNormalizer.removeSpaces(normalized);
 
-      // 分類コードっぽいかチェック
-      if (!/^[A-Z]\d{2}[A-Z]\d+\/\d+/.test(token)) return;
+    // 2. +でトップレベル分割してcodes配列を作る（括弧ネストを考慮）
+    const codes = this._splitByPlus(normalizedClean);
 
-      // 既存チェック
-      let cb = this.repo.findClassBlockByToken(token);
-      
-      if (!cb) {
-        // 上限チェック
-        if (!this.repo.canAddBlock('CB')) {
-          console.warn(`分類ブロックの上限に達しています: ${token}`);
-          return;
+    if (codes.length === 0) {
+      return null;
+    }
+
+    // 3. expressionKey生成: codesをソートして+結合
+    const sortedCodes = [...codes].sort();
+    const expressionKey = sortedCodes.join('+');
+
+    // 4. 既存のClassBlockを検索（expressionKeyベース）
+    let cb = this.repo.findClassBlockByExpressionKey(expressionKey);
+
+    if (cb) {
+      // 既存のClassBlockを再利用
+      return cb.id;
+    }
+
+    // 5. 新規作成
+    // 上限チェック
+    const limitCheck = this.repo.checkBlockLimit('CB');
+    if (!limitCheck.ok) {
+      throw new Error(limitCheck.message);
+    }
+
+    // 6. labelはcodes[0]を表示名に
+    const label = codes[0] || expressionKey;
+
+    // 7. token生成（ランダムID推奨だが、現状はexpressionKeyを使用）
+    const token = expressionKey;
+
+    // 8. ClassBlock作成
+    const id = this.repo.nextId('CB');
+    cb = new ClassBlock(id, label, token, codes, expressionKey);
+    this.repo.upsert(cb);
+
+    return cb.id;
+  }
+
+  /**
+   * +でトップレベル分割（括弧ネストを考慮）
+   * @param {string} str - 例: "H04W12/00/CP+H04W12/00/FI"
+   * @returns {string[]} - 例: ["H04W12/00/CP", "H04W12/00/FI"]
+   * @private
+   */
+  _splitByPlus(str) {
+    const elements = [];
+    let current = '';
+    let depth = 0;
+
+    for (let i = 0; i < str.length; i++) {
+      const ch = str[i];
+
+      if (ch === '(' || ch === '[' || ch === '{') {
+        depth++;
+        current += ch;
+      } else if (ch === ')' || ch === ']' || ch === '}') {
+        depth = Math.max(0, depth - 1);
+        current += ch;
+      } else if (ch === '+' && depth === 0) {
+        // トップレベルの+
+        if (current.trim().length > 0) {
+          elements.push(current.trim());
         }
-
-        const id = this.repo.findOrCreateIdForLabel(token, 'CB');
-        cb = new ClassBlock(id, token, token, [token]);
-        this.repo.upsert(cb);
-        classIds.push(cb.id);
+        current = '';
+      } else {
+        current += ch;
       }
-    });
+    }
 
-    return classIds;
+    // 最後の要素
+    if (current.trim().length > 0) {
+      elements.push(current.trim());
+    }
+
+    return elements;
   }
 
+  // ========================================
+  // 近傍因子 → 内部Word抽出
+  // ========================================
+
   /**
-   * 近傍式から Word を抽出（各子要素からWord式単位で）
-   * @param {ExprNode} proximityNode
-   * @returns {string[]} - 作成した WordBlock の ID 配列
+   * 近傍因子から内部のWord式を抽出してWordBlockを生成
+   * @param {string} factorStr - 例: "{(W1),(W2),基地局},10n/TX"
+   * @returns {string[]} - 作成したWordBlockのID配列
    * @private
    */
-  _extractWordsFromProximity(proximityNode) {
+  _generateWordBlocksFromProximity(factorStr) {
     const wordIds = [];
 
-    if (!proximityNode.children || !Array.isArray(proximityNode.children)) {
+    // 1. {}の中身を取り出す
+    const innerMatch = factorStr.match(/^\{(.+)\},\d+n\/(TX|CP|FI)$/i);
+    if (!innerMatch) {
       return wordIds;
     }
 
-    // 各子要素からWord式を抽出
-    proximityNode.children.forEach(child => {
-      // 各子要素（A+B、F+D+H、I など）からWord式文字列を抽出
-      const wordExprString = this._extractWordExpressionString(child);
+    const proximityInnerRaw = innerMatch[1];
+
+    // 2. カンマでトップレベル分割（括弧ネストに注意）
+    const proximityElementList = this._splitByComma(proximityInnerRaw);
+
+    // 3. 各要素をWord式として処理
+    proximityElementList.forEach(element => {
+      // フィールドタグを剥がす
+      const wordCore = this._stripFieldTag(element);
       
-      if (wordExprString) {
-        // Word式単位でWordBlock作成または再利用
-        const wordId = this._createOrReuseWordBlock(wordExprString);
-        
+      // 括弧を外す
+      const wordExpr = this._stripOuterParens(wordCore);
+
+      if (wordExpr && wordExpr.trim().length > 0) {
+        const wordId = this._createOrReuseWordBlock(wordExpr);
         if (wordId) {
           wordIds.push(wordId);
         }
@@ -367,48 +595,44 @@ class ExpressionBlockConverter {
   }
 
   /**
-   * EquationBlock を作成
-   * @param {ExprNode} factor
-   * @param {string} labelPrefix
-   * @param {boolean} canUseForProximity
-   * @returns {string} - 作成した EquationBlock の ID
+   * カンマでトップレベル分割（括弧ネストを考慮）
+   * @param {string} str - 例: "(W1),(W2),基地局"
+   * @returns {string[]} - 例: ["(W1)", "(W2)", "基地局"]
    * @private
    */
-  _createEquationBlock(factor, labelPrefix, canUseForProximity) {
-    // 式のレンダリング（内部整形を適用してきれいな形に）
-    const rawLogical = factor.renderLogical ? factor.renderLogical(this.ctx) : 'unknown';
-    
-    // ExpressionNormalizer がある場合は内部整形を適用
-    const logical = this.exprService && this.exprService.exprNormalizer
-      ? this.exprService.exprNormalizer.normalizeInline(rawLogical)
-      : rawLogical;
+  _splitByComma(str) {
+    const elements = [];
+    let current = '';
+    let depth = 0;
 
-    const label = `${labelPrefix}: ${logical.substring(0, 30)}${logical.length > 30 ? '...' : ''}`;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str[i];
 
-    const id = this.repo.findOrCreateIdForLabel(label, 'EB');
-    let eb = this.repo.get(id);
-
-    if (eb && eb.kind === 'EB') {
-      // 既存の更新
-      eb.setRoot(factor.clone ? factor.clone() : factor);
-      eb.canUseForProximity = canUseForProximity;
-      this.repo.upsert(eb);
-    } else {
-      // 新規作成
-      const limitCheck = this.repo.checkBlockLimit('EB');
-      if (!limitCheck.ok) {
-        throw new Error(limitCheck.message);
+      if (ch === '(' || ch === '[' || ch === '{') {
+        depth++;
+        current += ch;
+      } else if (ch === ')' || ch === ']' || ch === '}') {
+        depth = Math.max(0, depth - 1);
+        current += ch;
+      } else if (ch === ',' && depth === 0) {
+        // トップレベルのカンマ
+        if (current.trim().length > 0) {
+          elements.push(current.trim());
+        }
+        current = '';
+      } else {
+        current += ch;
       }
-
-      eb = new EquationBlock(id, label, factor.clone ? factor.clone() : factor);
-      eb.canUseForProximity = canUseForProximity;
-      this.repo.upsert(eb);
     }
 
-    return eb.id;
+    // 最後の要素
+    if (current.trim().length > 0) {
+      elements.push(current.trim());
+    }
+
+    return elements;
   }
 }
 
 // グローバル公開
 window.ExpressionBlockConverter = ExpressionBlockConverter;
-

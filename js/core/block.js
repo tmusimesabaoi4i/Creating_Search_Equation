@@ -198,10 +198,15 @@ class WordBlock extends ValueBlock {
 
 /**
  * 分類ブロック
- *   - token: 分類ブロックの識別子（自動生成 or NAME）
- *   - codes: ["H04W36/00","H04W24/00"] のような分類コード列
- *   - classificationExpr: (H04W36/00+H04W24/00)
- *   - searchExpr: [(H04W36/00+H04W24/00)/CP+(H04W36/00+H04W24/00)/FI]
+ * 
+ * プロパティ:
+ * - id: UI/管理用ID（例: CB-0001）
+ * - token: 式ビルダー内で使う内部トークン（ランダムな文字列または意味的な値）
+ * - expressionKey: Class式を識別する正規化済みキー（例: "H04W12/00/CP+H04W12/00/FI"）
+ * - codes: ["H04W12/00/CP", "H04W12/00/FI"] のような完全な分類トークン列
+ * - classificationExpr: H04W12/00/CP+H04W12/00/FI（1要素なら括弧なし、2つ以上なら括弧付き）
+ * - searchExpr: [H04W12/00/CP+H04W12/00/FI]（/CP /FIの二重付けなし）
+ * - label: codes[0]（表示名は先頭分類コード）
  */
 class ClassBlock extends ValueBlock {
   /**
@@ -209,23 +214,37 @@ class ClassBlock extends ValueBlock {
    * @param {string} label
    * @param {string} token
    * @param {string[]} codes
+   * @param {string} [expressionKey] - 正規化済みキー
    */
-  constructor(id, label, token, codes) {
+  constructor(id, label, token, codes, expressionKey) {
     super(id, label, 'CB');
     this.token = token || '';
     this.codes = Array.isArray(codes) ? codes : [];
+    this.expressionKey = expressionKey || '';
     this._recalcExpressions();
   }
 
   /**
    * codes に応じて classificationExpr / searchExpr を再計算
+   * 
+   * 新しいポリシー:
+   * - codes: 完全な分類トークン（例: ["H04W12/00/CP", "H04W12/00/FI"]）
+   * - classificationExpr: codesを+で結合（2つ以上なら括弧付き）
+   * - searchExpr: "[" + classificationExpr + "]"
+   * - /CP /FIの二重付けは行わない
+   * 
    * @private
    */
   _recalcExpressions() {
     if (this.codes && this.codes.length > 0) {
       const inner = this.codes.join('+');
-      this.classificationExpr = `(${inner})`;
-      this.searchExpr = `[${this.classificationExpr}/CP+${this.classificationExpr}/FI]`;
+      // 要素数に応じて括弧を付ける
+      if (this.codes.length >= 2) {
+        this.classificationExpr = `(${inner})`;
+      } else {
+        this.classificationExpr = inner;
+      }
+      this.searchExpr = `[${this.classificationExpr}]`;
     } else {
       this.classificationExpr = '';
       this.searchExpr = '';
@@ -239,6 +258,15 @@ class ClassBlock extends ValueBlock {
   setCodes(codes) {
     this.codes = Array.isArray(codes) ? codes : [];
     this._recalcExpressions();
+    this.touchUpdated();
+  }
+
+  /**
+   * expressionKey を更新
+   * @param {string} key
+   */
+  updateExpressionKey(key) {
+    this.expressionKey = key || '';
     this.touchUpdated();
   }
 
@@ -257,7 +285,8 @@ class ClassBlock extends ValueBlock {
       token: this.token,
       codes: this.codes,
       classificationExpr: this.classificationExpr,
-      searchExpr: this.searchExpr
+      searchExpr: this.searchExpr,
+      expressionKey: this.expressionKey
     });
   }
 
@@ -270,7 +299,8 @@ class ClassBlock extends ValueBlock {
       obj.id,
       obj.label,
       obj.token || '',
-      Array.isArray(obj.codes) ? obj.codes : []
+      Array.isArray(obj.codes) ? obj.codes : [],
+      obj.expressionKey || ''
     );
     cb.createdAt = obj.createdAt || Date.now();
     cb.updatedAt = obj.updatedAt || cb.createdAt;
