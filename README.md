@@ -1,5 +1,23 @@
 # Creating_Search_Equation
 
+# How To PUSH
+
+```
+git add ./
+```
+
+and
+
+```
+git commit --allow-empty -m "　"
+```
+
+and
+
+```
+git push
+```
+
 ##
 ```
 アンテナ+antenna
