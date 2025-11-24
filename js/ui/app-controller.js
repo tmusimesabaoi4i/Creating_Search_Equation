@@ -9,6 +9,11 @@ class AppController {
     this.view = new ViewRenderer(this.repo, this.ctx);
     this.proxPanel = null;
 
+    // 新機能: 式の正規化とブロック変換
+    this.exprNormalizer = new ExpressionNormalizer();
+    this.wordNormalizer = new WordNormalizer();
+    this.blockConverter = new ExpressionBlockConverter(this.exprService, this.repo, this.ctx);
+
     this.elements = {
       exprInput: null,
       parseButton: null,
@@ -69,25 +74,44 @@ class AppController {
   }
 
   /**
-   * ブロックビルダー: 入力 → 単語/分類ブロックを生成
+   * ブロックビルダー: 入力 → 単語/分類/ブロック生成
    */
   onParseClick() {
     const text = (this.elements.exprInput && this.elements.exprInput.value) || '';
-    const kind = this._getCurrentBuilderKind(); // "word" or "class"
+    const kind = this._getCurrentBuilderKind(); // "word" | "class" | "block"
 
-    const result = this.exprService.parseInputLines(text, kind);
-    this.showErrors(result.errors || []);
+    if (kind === 'block') {
+      // 新機能1: ブロックモード - 検索式からブロック生成
+      const result = this.blockConverter.generateBlocksFromEquationInput(text);
+      this.showErrors(result.errors || []);
 
-    // 成功していれば入力をクリアする（好みでコメントアウト可）
-    if (!result.errors || result.errors.length === 0) {
-      if (this.elements.exprInput) {
-        this.elements.exprInput.value = '';
+      // 成功していれば入力をクリア
+      if (!result.errors || result.errors.length === 0) {
+        if (this.elements.exprInput) {
+          this.elements.exprInput.value = '';
+        }
       }
-    }
 
-    this.renderAll();
-    if (this.proxPanel) {
-      this.proxPanel.onRepositoryUpdated();
+      this.renderAll();
+      if (this.proxPanel) {
+        this.proxPanel.onRepositoryUpdated();
+      }
+    } else {
+      // 従来の Word/Class ブロック生成
+      const result = this.exprService.parseInputLines(text, kind);
+      this.showErrors(result.errors || []);
+
+      // 成功していれば入力をクリア
+      if (!result.errors || result.errors.length === 0) {
+        if (this.elements.exprInput) {
+          this.elements.exprInput.value = '';
+        }
+      }
+
+      this.renderAll();
+      if (this.proxPanel) {
+        this.proxPanel.onRepositoryUpdated();
+      }
     }
   }
 
@@ -118,14 +142,16 @@ class AppController {
 
   /**
    * ラジオボタンからブロック種別を取得
-   * @returns {"word"|"class"}
+   * @returns {"word"|"class"|"block"}
    * @private
    */
   _getCurrentBuilderKind() {
     const radios = document.querySelectorAll('input[name="builder-kind"]');
     for (const radio of radios) {
       if (radio.checked) {
-        return radio.value === 'class' ? 'class' : 'word';
+        if (radio.value === 'class') return 'class';
+        if (radio.value === 'block') return 'block';
+        return 'word';
       }
     }
     return 'word';
@@ -159,12 +185,7 @@ class AppController {
       return;
     }
 
-    // 機能3: 編集
-    if (target.closest('.js-edit-block')) {
-      event.stopPropagation();
-      this.openEditModal(block);
-      return;
-    }
+    // 新機能1により「編集」機能は削除済み
 
     // それ以外のクリック → ビルダー用の素材選択トグル
     this.toggleBuilderSelection(id);
@@ -194,16 +215,7 @@ class AppController {
     const block = this.repo.get(id);
     if (!block) return;
 
-    // 式からブロック生成（旧: 語再生成）
-    if (target.closest('.js-decompose-words')) {
-      event.stopPropagation();
-      this.exprService.decomposeEquationToBlocks(id);
-      // Word、Class、Equation すべて再描画
-      this.renderWordsOnly();
-      this.renderEquationsOnly();
-      if (this.proxPanel) this.proxPanel.onRepositoryUpdated();
-      return;
-    }
+    // 新機能1により「式からブロック生成」機能は削除済み
 
     // ★ 検索式コピー
     if (target.classList.contains('js-copy-equation-query')) {
@@ -218,12 +230,7 @@ class AppController {
       return;
     }
 
-    // 編集
-    if (target.closest('.js-edit-block')) {
-      event.stopPropagation();
-      this.openEditModal(block);
-      return;
-    }
+    // 新機能1により「編集」機能は削除済み
 
     // それ以外のクリック → 素材選択トグル & 論理式を textarea に表示（参照用）
     this.toggleBuilderSelection(id);
@@ -239,13 +246,16 @@ class AppController {
   handleCopyEquationQuery(ebId) {
     const eb = this.repo.get(ebId);
     if (!eb || eb.kind !== 'EB') return;
-    const text = eb.renderQuery(this.ctx) || '';
-    if (!text) {
+    const rawText = eb.renderQuery(this.ctx) || '';
+    if (!rawText) {
       this.showToast('検索式が空です。', 'error');
       return;
     }
 
-    this._copyTextToClipboard(text)
+    // 新機能2: 内部整形を適用（記号半角化、スペース削除）
+    const normalizedText = this.exprNormalizer.normalizeInline(rawText);
+
+    this._copyTextToClipboard(normalizedText)
       .then(() => {
         this.showToast('検索式をクリップボードにコピーしました。', 'success');
       })

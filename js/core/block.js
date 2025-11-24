@@ -92,22 +92,63 @@ class ExpressionBlock extends Block {
 
 /**
  * 語ブロック
+ * 
+ * プロパティ:
+ * - id: UI/管理用ID（例: WB-0001）
+ * - token: 式ビルダー内で使う内部トークン（ランダムな文字列）
+ * - expressionKey: Word式を識別する正規化済みキー（例: "antenna+アンテナ"）
+ * - queryText: 外部整形済みの検索用テキスト（全バリエーション含む）
+ * - variants: 外部整形で生成されたバリエーション配列
+ * - displayLabel: UI表示用ラベル（例: "(antenna+Antenna+...)"）
  */
 class WordBlock extends ValueBlock {
   /**
    * @param {string} id
    * @param {string} label
-   * @param {string} token
-   * @param {string} queryText
+   * @param {string} token - 内部トークン（ランダムID推奨）
+   * @param {string} queryText - 外部整形済み検索テキスト
+   * @param {string} [expressionKey] - 正規化済みキー
+   * @param {string[]} [variants] - バリエーション配列
+   * @param {string} [displayLabel] - UI表示用ラベル
    */
-  constructor(id, label, token, queryText) {
+  constructor(id, label, token, queryText, expressionKey, variants, displayLabel) {
     super(id, label, 'WB');
     this.token = token || '';
     this.queryText = queryText || '';
+    this.expressionKey = expressionKey || '';
+    this.variants = Array.isArray(variants) ? variants : [];
+    this.displayLabel = displayLabel || '';
   }
 
   updateQueryText(newText) {
     this.queryText = newText || '';
+    this.touchUpdated();
+  }
+
+  /**
+   * expressionKey を更新
+   * @param {string} key
+   */
+  updateExpressionKey(key) {
+    this.expressionKey = key || '';
+    this.touchUpdated();
+  }
+
+  /**
+   * variants を更新
+   * @param {string[]} variants
+   */
+  updateVariants(variants) {
+    this.variants = Array.isArray(variants) ? variants : [];
+    this.touchUpdated();
+  }
+
+  /**
+   * displayLabel を更新
+   * @param {string} label
+   */
+  updateDisplayLabel(label) {
+    this.displayLabel = label || '';
     this.touchUpdated();
   }
 
@@ -128,7 +169,10 @@ class WordBlock extends ValueBlock {
     const base = super.toJSON();
     return Object.assign(base, {
       token: this.token,
-      queryText: this.queryText
+      queryText: this.queryText,
+      expressionKey: this.expressionKey,
+      variants: this.variants,
+      displayLabel: this.displayLabel
     });
   }
 
@@ -141,7 +185,10 @@ class WordBlock extends ValueBlock {
       obj.id,
       obj.label,
       obj.token || '',
-      obj.queryText || ''
+      obj.queryText || '',
+      obj.expressionKey || '',
+      Array.isArray(obj.variants) ? obj.variants : [],
+      obj.displayLabel || ''
     );
     wb.createdAt = obj.createdAt || Date.now();
     wb.updatedAt = obj.updatedAt || wb.createdAt;

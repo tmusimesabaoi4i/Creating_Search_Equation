@@ -75,16 +75,12 @@ class ViewRenderer {
     btnGenerate.type = 'button';
     btnGenerate.textContent = '式入力へ';
 
-    const btnEdit = create('button', 'btn-small js-edit-block');
-    btnEdit.type = 'button';
-    btnEdit.textContent = '編集';
-
     const btnDelete = create('button', 'btn-small js-delete-block');
     btnDelete.type = 'button';
     btnDelete.textContent = '削除';
 
+    // 新機能1により「編集」ボタンは不要
     btnRow.appendChild(btnGenerate);
-    btnRow.appendChild(btnEdit);
     btnRow.appendChild(btnDelete);
 
     header.appendChild(labelSpan);
@@ -188,17 +184,6 @@ class ViewRenderer {
 
     const btnRow = create('div', 'block-card__buttons');
 
-    const btnDecompose = create(
-      'button',
-      'btn-small js-decompose-words'
-    );
-    btnDecompose.type = 'button';
-    btnDecompose.textContent = '式からブロック生成';
-
-    const btnEdit = create('button', 'btn-small js-edit-block');
-    btnEdit.type = 'button';
-    btnEdit.textContent = '編集';
-
     // ★ 検索式コピー用ボタン
     const copyBtn = create('button', 'btn-small js-copy-equation-query');
     copyBtn.type = 'button';
@@ -208,9 +193,8 @@ class ViewRenderer {
     btnDelete.type = 'button';
     btnDelete.textContent = '削除';
 
-    btnRow.appendChild(btnDecompose);
-    btnRow.appendChild(btnEdit);
-    btnRow.appendChild(copyBtn);    // ← ここでヘッダに追加
+    // 新機能1により「式からブロック生成」「編集」ボタンは不要
+    btnRow.appendChild(copyBtn);
     btnRow.appendChild(btnDelete);
 
     header.appendChild(labelSpan);

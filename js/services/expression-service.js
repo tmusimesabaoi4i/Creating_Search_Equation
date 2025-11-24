@@ -9,6 +9,9 @@ class ExpressionService {
     this.repo = blockRepository;
     this.wordTokenGen = new WordTokenGenerator(blockRepository);
     this.classTokenGen = new ClassTokenGenerator(blockRepository);
+    // 新機能2: 正規化サービス
+    this.exprNormalizer = new ExpressionNormalizer();
+    this.wordNormalizer = new WordNormalizer();
   }
 
   /**
@@ -298,7 +301,7 @@ class ExpressionService {
    *  NAME = expr  → token = NAME
    *  expr         → token = ランダム5文字
    *
-   * queryText は (exprの論理表示) として保存
+   * queryText は外部整形を適用した形で保存（新機能2）
    *
    * @param {string|null} name
    * @param {ExprNode} expr
@@ -316,18 +319,36 @@ class ExpressionService {
 
     const label = token;
 
+    // 新機能2: WordNormalizer で外部整形を適用
+    // 英単語のバリエーション展開を含む（配列で返る）
+    const variants = this.wordNormalizer.normalizeForWordBlock(body);
+    
+    // expressionKey を生成（軽量正規化）
+    const expressionKey = this.wordNormalizer.buildExpressionKey(body);
+    
+    // displayLabel を生成
+    const displayLabel = this.wordNormalizer.buildDisplayLabel(variants);
+
+    // queryText: variantsを+で結合し括弧で囲む
+    const queryText = variants.length > 0
+      ? `(${variants.join('+')})`
+      : `(${body})`;
+
     // token で既存 WordBlock を優先検索
     let wb = this.repo.findWordBlockByToken(token);
     if (wb && wb.kind === 'WB') {
       wb.token = token;
       wb.label = label;
-      wb.updateQueryText(`(${body})`);
+      wb.updateQueryText(queryText);
+      wb.updateExpressionKey(expressionKey);
+      wb.updateVariants(variants);
+      wb.updateDisplayLabel(displayLabel);
       this.repo.upsert(wb);
       return wb.id;
     }
 
     const id = this.repo.findOrCreateIdForLabel(label, 'WB');
-    wb = new WordBlock(id, label, token, `(${body})`);
+    wb = new WordBlock(id, label, token, queryText, expressionKey, variants, displayLabel);
     this.repo.upsert(wb);
     return id;
   }

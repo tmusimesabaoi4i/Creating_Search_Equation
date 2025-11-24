@@ -30,16 +30,20 @@
         placeholder="例1) NB = 基地局+NB+eNB&#10;例2) H04W16/24+H04W36/00"
       ></textarea>
 
-      <!-- ★ ブロックビルダー: 単語 / 分類 選択 + ボタン -->
+      <!-- ★ ブロックビルダー: 単語 / 分類 / ブロック 選択 + ボタン -->
       <div class="builder-input-row">
         <div class="builder-kind-select">
           <label>
-            <input type="radio" name="builder-kind" value="word" checked />
+            <input type="radio" name="builder-kind" value="word" checked id="builder-kind-word" />
             単語ブロック
           </label>
           <label>
-            <input type="radio" name="builder-kind" value="class" />
+            <input type="radio" name="builder-kind" value="class" id="builder-kind-class" />
             分類ブロック
+          </label>
+          <label>
+            <input type="radio" name="builder-kind" value="block" id="builder-kind-block" />
+            ブロック
           </label>
         </div>
         <button id="btn-parse" class="btn">
@@ -51,6 +55,7 @@
         ・入力例 (単語): <code>NB = 基地局+NB+eNB</code> または
         <code>基地局+NB+eNB</code>（名前なしの場合、token はランダム5文字）<br />
         ・入力例 (分類): <code>H04W16/24+H04W36/00</code><br />
+        ・入力例 (ブロック): <code>(A+B)/TX*(A+B+C)/TX*(F+D)/TX*S/TX</code><br />
         ・分類ブロックでは <code>*</code> や 近傍演算（<code>10n</code>, <code>10c</code>）
         は使用できません。
       </div>
@@ -175,6 +180,10 @@
   <script src="js/parser/parser.js"></script>
 
   <script src="js/services/expression-service.js"></script>
+  <!-- 新機能: 式の正規化とブロック変換 -->
+  <script src="js/services/expression-normalizer.js"></script>
+  <script src="js/services/word-normalizer.js"></script>
+  <script src="js/services/expression-block-converter.js"></script>
 
   <script src="js/ui/dom-utils.js"></script>
   <script src="js/ui/view-renderer.js"></script>

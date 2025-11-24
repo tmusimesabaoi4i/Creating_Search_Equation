@@ -12,6 +12,8 @@ class BlockRepository {
     this.tokenToWordId = new Map();
     /** @type {Map<string, string>} token -> ClassBlock.id */
     this.tokenToClassId = new Map();
+    /** @type {Map<string, string>} expressionKey -> WordBlock.id */
+    this.expressionKeyToWordId = new Map();
 
     this.counters = {
       WB: 0,
@@ -28,8 +30,13 @@ class BlockRepository {
     if (!block || !block.id) return;
     this.blocks.set(block.id, block);
 
-    if (block.kind === 'WB' && block.token) {
-      this.tokenToWordId.set(block.token, block.id);
+    if (block.kind === 'WB') {
+      if (block.token) {
+        this.tokenToWordId.set(block.token, block.id);
+      }
+      if (block.expressionKey) {
+        this.expressionKeyToWordId.set(block.expressionKey, block.id);
+      }
     } else if (block.kind === 'CB' && block.token) {
       this.tokenToClassId.set(block.token, block.id);
     }
@@ -51,8 +58,13 @@ class BlockRepository {
     const blk = this.blocks.get(id);
     if (!blk) return;
 
-    if (blk.kind === 'WB' && blk.token) {
-      this.tokenToWordId.delete(blk.token);
+    if (blk.kind === 'WB') {
+      if (blk.token) {
+        this.tokenToWordId.delete(blk.token);
+      }
+      if (blk.expressionKey) {
+        this.expressionKeyToWordId.delete(blk.expressionKey);
+      }
     } else if (blk.kind === 'CB' && blk.token) {
       this.tokenToClassId.delete(blk.token);
     }
@@ -155,6 +167,22 @@ class BlockRepository {
   }
 
   /**
+   * expressionKey に紐づく WordBlock を返す
+   * @param {string} expressionKey
+   * @returns {WordBlock|undefined}
+   */
+  findWordBlockByExpressionKey(expressionKey) {
+    if (!expressionKey) return undefined;
+    const id = this.expressionKeyToWordId.get(expressionKey);
+    if (!id) return undefined;
+    const blk = this.blocks.get(id);
+    if (blk && blk.kind === 'WB') {
+      return blk;
+    }
+    return undefined;
+  }
+
+  /**
    * token に紐づく ClassBlock を返す
    * @param {string} token
    * @returns {ClassBlock|undefined}
@@ -186,6 +214,55 @@ class BlockRepository {
       return wb;
     }
     wb = new WordBlock(id, label, token, initialQueryText || `(${token})`);
+    this.upsert(wb);
+    return wb;
+  }
+
+  /**
+   * expressionKey から WordBlock を生成し登録（新API）
+   * 
+   * @param {string} expressionKey - 正規化済みキー
+   * @param {string[]} variants - バリエーション配列
+   * @param {string} displayLabel - UI表示用ラベル
+   * @param {string} randomToken - ランダム生成されたトークン
+   * @returns {WordBlock}
+   */
+  createWordBlockFromExpression(expressionKey, variants, displayLabel, randomToken) {
+    if (!expressionKey) {
+      throw new Error('expressionKey is required');
+    }
+
+    // 既存チェック
+    let existing = this.findWordBlockByExpressionKey(expressionKey);
+    if (existing) {
+      return existing;
+    }
+
+    // 上限チェック
+    const limitCheck = this.checkBlockLimit('WB');
+    if (!limitCheck.ok) {
+      throw new Error(limitCheck.message);
+    }
+
+    // 新規ID発番
+    const id = this.nextId('WB');
+
+    // queryText: variantsを+で結合し、括弧で囲む
+    const queryText = variants && variants.length > 0
+      ? `(${variants.join('+')})`
+      : `(${expressionKey})`;
+
+    // WordBlock作成
+    const wb = new WordBlock(
+      id,
+      displayLabel || expressionKey, // labelはdisplayLabelまたはexpressionKey
+      randomToken || id, // tokenはランダムIDまたはid
+      queryText,
+      expressionKey,
+      variants,
+      displayLabel
+    );
+
     this.upsert(wb);
     return wb;
   }
@@ -239,6 +316,7 @@ class BlockRepository {
     this.blocks.clear();
     this.tokenToWordId.clear();
     this.tokenToClassId.clear();
+    this.expressionKeyToWordId.clear();
     this.counters = {
       WB: 0,
       CB: 0,
