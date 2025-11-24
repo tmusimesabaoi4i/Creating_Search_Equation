@@ -31,7 +31,7 @@ class ExpressionBlockConverter {
     // 内部状態（処理中の式情報）
     this.inputed_qu_raw = '';      // 入力そのまま
     this.inputed_qu_norm = '';    // 内部整形済み（記号半角化・スペース除去）
-    this.inputed_qu_class = '';   // ブロック分解の基準となる式（分解対象式）
+    this.inputExprForConversion = '';   // ブロック分解の基準となる式（分解対象式）
     this.joinedBlockList = [];
     this.factorMetaList = [];
   }
@@ -113,23 +113,60 @@ class ExpressionBlockConverter {
     this.inputed_qu_norm = this.exprNormalizer.normalizeInline(rawText);
     this.inputed_qu_norm = this.exprNormalizer.removeSpaces(this.inputed_qu_norm);
     
-    // ブロック分解の基準となる式（分解対象式）として明示的にコピー
-    // 将来的にinputed_qu_normとinputed_qu_classを分離する可能性を考慮
-    this.inputed_qu_class = this.inputed_qu_norm;
+    // ブロック分解の基準となる式（分解対象式）を準備
+    // トップレベルの[]を削除してから使用
+    this.inputExprForConversion = this._stripOuterSquareBrackets(this.inputed_qu_norm);
     
     this.joinedBlockList = [];
     this.factorMetaList = [];
   }
 
   /**
+   * トップレベルの[]を削除（ネストしている[]は保持）
+   * @param {string} expr
+   * @returns {string}
+   * @private
+   */
+  _stripOuterSquareBrackets(expr) {
+    if (!expr || typeof expr !== 'string') {
+      return '';
+    }
+    
+    let stripped = expr.trim();
+    
+    // トップレベルが[]で囲まれている場合のみ削除
+    if (stripped.startsWith('[') && stripped.endsWith(']')) {
+      // 対応する閉じ括弧が最後にあるかチェック
+      let depth = 0;
+      let valid = true;
+      
+      for (let i = 0; i < stripped.length; i++) {
+        if (stripped[i] === '[') depth++;
+        if (stripped[i] === ']') depth--;
+        // トップレベルの閉じ括弧が最後以外にある場合は無効
+        if (depth === 0 && i !== stripped.length - 1) {
+          valid = false;
+          break;
+        }
+      }
+      
+      if (valid && depth === 0) {
+        stripped = stripped.slice(1, -1).trim();
+      }
+    }
+    
+    return stripped;
+  }
+
+  /**
    * 正規化済み式をトップレベルの*で因子分解
    * 括弧ネスト（(), [], {}）を考慮する
    * 
-   * 分解対象式としてinputed_qu_classを使用（責務を明確化）
+   * 分解対象式としてinputExprForConversionを使用（責務を明確化）
    * @private
    */
   _splitFactorsByProduct() {
-    const normalized = this.inputed_qu_class;
+    const normalized = this.inputExprForConversion;
     const factors = [];
     let currentFactor = '';
     let depth = 0; // 括弧ネストの深さ

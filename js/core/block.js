@@ -424,6 +424,165 @@ class EquationBlock extends ExpressionBlock {
     return renderFieldParts(parts);
   }
 
+  /**
+   * 色マップ用モデルを構築
+   * @param {RenderContext} ctx
+   * @returns {Array<{word: string, clsname: string}>}
+   */
+  buildColorMapModel(ctx) {
+    if (!this.root) return [];
+    ctx = ctx || new RenderContext(window.blockRepository || null);
+    
+    const colorMap = [];
+    let markIndex = 0;
+    
+    // トップレベルの因子（掛け算）を分解
+    const factors = this._extractTopLevelFactors(this.root);
+    
+    factors.forEach(factor => {
+      if (factor instanceof ProximityNode) {
+        // 近傍式因子
+        const proxModel = this._buildProximityColorMap(factor, ctx, markIndex);
+        colorMap.push(...proxModel.items);
+        markIndex = proxModel.nextIndex;
+      } else {
+        // 通常の因子（Word式など）
+        const wordPattern = this._extractWordPatternFromFactor(factor, ctx);
+        if (wordPattern) {
+          colorMap.push({
+            word: this._renderColormapPattern(wordPattern),
+            clsname: `mark-${markIndex}`
+          });
+          markIndex++;
+        }
+      }
+    });
+    
+    return colorMap;
+  }
+
+  /**
+   * トップレベルの因子（掛け算）を抽出
+   * @param {ExprNode} node
+   * @returns {ExprNode[]}
+   * @private
+   */
+  _extractTopLevelFactors(node) {
+    if (node instanceof LogicalNode && node.op === '*') {
+      return node.children || [];
+    }
+    return [node];
+  }
+
+  /**
+   * 近傍式から色マップモデルを構築
+   * @param {ProximityNode} proxNode
+   * @param {RenderContext} ctx
+   * @param {number} startIndex
+   * @returns {{items: Array<{word: string, clsname: string}>, nextIndex: number}}
+   * @private
+   */
+  _buildProximityColorMap(proxNode, ctx, startIndex) {
+    const items = [];
+    let currentIndex = startIndex;
+    
+    // 近傍式全体を1つのパターンとして扱う
+    const leftPattern = this._extractWordPatternFromFactor(proxNode.children[0], ctx);
+    const rightPattern = this._extractWordPatternFromFactor(proxNode.children[1], ctx);
+    
+    if (leftPattern && rightPattern) {
+      // 近傍式全体のパターン
+      const proxPattern = `(${leftPattern},${proxNode.k}${proxNode.mode === 'NNc' ? 'c' : 'n'},${rightPattern})`;
+      items.push({
+        word: this._renderColormapPattern(proxPattern),
+        clsname: `mark-${currentIndex}`
+      });
+      currentIndex++;
+      
+      // 左側語群
+      items.push({
+        word: this._renderColormapPattern(leftPattern),
+        clsname: `mark-${currentIndex}`
+      });
+      currentIndex++;
+      
+      // 右側語群
+      items.push({
+        word: this._renderColormapPattern(rightPattern),
+        clsname: `mark-${currentIndex}`
+      });
+      currentIndex++;
+    }
+    
+    return { items, nextIndex: currentIndex };
+  }
+
+  /**
+   * 因子からWordパターンを抽出
+   * @param {ExprNode} factor
+   * @param {RenderContext} ctx
+   * @returns {string|null}
+   * @private
+   */
+  _extractWordPatternFromFactor(factor, ctx) {
+    if (factor instanceof WordTokenNode) {
+      const wb = ctx.getWordForToken(factor.token);
+      if (wb && wb.variants && wb.variants.length > 0) {
+        return wb.variants.join('|');
+      }
+      return factor.token;
+    }
+    
+    if (factor instanceof BlockRefNode) {
+      const block = ctx.resolveBlock(factor.blockId);
+      if (block && block.kind === 'WB') {
+        const wb = block;
+        if (wb.variants && wb.variants.length > 0) {
+          return wb.variants.join('|');
+        }
+        return wb.queryText || wb.token || '';
+      }
+    }
+    
+    if (factor instanceof LogicalNode && factor.op === '+') {
+      // 和結合：各子ノードからWordパターンを抽出して結合
+      const patterns = [];
+      factor.children.forEach(child => {
+        const pattern = this._extractWordPatternFromFactor(child, ctx);
+        if (pattern) {
+          patterns.push(pattern);
+        }
+      });
+      if (patterns.length > 0) {
+        return patterns.join('+');
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * 色マップ用パターンをレンダリング（エスケープ処理）
+   * @param {string} pattern
+   * @returns {string}
+   * @private
+   */
+  _renderColormapPattern(pattern) {
+    if (!pattern) return '';
+    
+    // 色マップ用のエスケープ：括弧や演算子をエスケープ
+    return pattern
+      .replace(/\(/g, '\\(')
+      .replace(/\)/g, '\\)')
+      .replace(/\{/g, '\\{')
+      .replace(/\}/g, '\\}')
+      .replace(/\[/g, '\\[')
+      .replace(/\]/g, '\\]')
+      .replace(/\+/g, '\\+')
+      .replace(/\*/g, '\\*')
+      .replace(/\//g, '\\/');
+  }
+
   toJSON() {
     const base = super.toJSON();
     return Object.assign(base, {

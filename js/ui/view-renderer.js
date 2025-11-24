@@ -189,12 +189,19 @@ class ViewRenderer {
     copyBtn.type = 'button';
     copyBtn.textContent = '検索式コピー';
 
+    // ★ 色マップ出力用ボタン
+    const exportBtn = create('button', 'btn-small js-export-colormap');
+    exportBtn.type = 'button';
+    exportBtn.textContent = '色マップ出力';
+    exportBtn.title = '色マップモデルをJSONファイルとしてダウンロードします';
+
     const btnDelete = create('button', 'btn-small js-delete-block');
     btnDelete.type = 'button';
     btnDelete.textContent = '削除';
 
     // 新機能1により「式からブロック生成」「編集」ボタンは不要
     btnRow.appendChild(copyBtn);
+    btnRow.appendChild(exportBtn);
     btnRow.appendChild(btnDelete);
 
     header.appendChild(labelSpan);

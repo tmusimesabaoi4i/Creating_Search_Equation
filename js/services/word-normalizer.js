@@ -105,7 +105,7 @@ class WordNormalizer {
       expandedEngWords.push(...variants);
     });
 
-    // 5. 重複削除
+    // 5. 重複削除（7・8を追加したことで重複が増える可能性が高いため、最後に実行）
     const allWords = [...new Set([...expandedEngWords, ...jpWords])];
 
     // 6. 文字数降順でソート
@@ -127,10 +127,10 @@ class WordNormalizer {
   }
 
   /**
-   * 英単語から6つのバリエーションを生成
+   * 英単語から8つのバリエーションを生成
    * 
    * @param {string} word - 元の英単語
-   * @returns {string[]} - 6バリエーション
+   * @returns {string[]} - 8バリエーション
    * 
    * バリエーション:
    * 1. 先頭大文字・残り小文字・全角
@@ -139,6 +139,8 @@ class WordNormalizer {
    * 4. 全て大文字・半角
    * 5. 全て小文字・全角
    * 6. 全て小文字・半角
+   * 7. 1文字目小文字・2文字目以降大文字・全角
+   * 8. 1文字目小文字・2文字目以降大文字・半角
    * 
    * @private
    */
@@ -166,6 +168,13 @@ class WordNormalizer {
 
     // 6. 全て小文字・半角
     variants.push(baseWord.toLowerCase());
+
+    // 7. 1文字目小文字・2文字目以降大文字・全角
+    const camelCase = baseWord.charAt(0).toLowerCase() + baseWord.slice(1).toUpperCase();
+    variants.push(this._toFullWidth(camelCase));
+
+    // 8. 1文字目小文字・2文字目以降大文字・半角
+    variants.push(camelCase);
 
     return variants;
   }

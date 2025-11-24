@@ -239,6 +239,13 @@ class AppController {
       return;
     }
 
+    // ★ 色マップ出力
+    if (target.classList.contains('js-export-colormap')) {
+      event.stopPropagation();
+      this.handleExportColormap(id);
+      return;
+    }
+
     // 削除
     if (target.closest('.js-delete-block')) {
       event.stopPropagation();
@@ -279,6 +286,38 @@ class AppController {
         console.error('Clipboard copy failed:', err);
         this.showToast('クリップボードへのコピーに失敗しました。', 'error');
       });
+  }
+
+  /**
+   * 式ブロックの色マップモデルをエクスポート
+   * @param {string} ebId
+   */
+  handleExportColormap(ebId) {
+    const eb = this.repo.get(ebId);
+    if (!eb || eb.kind !== 'EB') {
+      this.showToast('式ブロックが見つかりません。', 'error');
+      return;
+    }
+
+    try {
+      // 色マップモデルを構築
+      const model = eb.buildColorMapModel(this.ctx);
+      
+      if (!model || model.length === 0) {
+        this.showToast('色マップモデルが空です。', 'error');
+        return;
+      }
+
+      // ファイル名を生成（式ブロックのラベルから）
+      const filename = `colormap_${eb.label || eb.id}.json`.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+
+      // エクスポート
+      ColormapExporter.export(model, filename);
+      this.showToast('色マップモデルをダウンロードしました。', 'success');
+    } catch (err) {
+      console.error('Colormap export failed:', err);
+      this.showToast('色マップの出力に失敗しました。', 'error');
+    }
   }
 
   /**
