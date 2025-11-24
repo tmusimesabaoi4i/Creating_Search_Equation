@@ -34,6 +34,15 @@
   }
 
   /**
+   * このノード以下に含まれる BlockRefNode の blockId を Set に追加する。
+   * （IDベースでブロック参照を追跡するために使用）
+   * @param {Set<string>} targetSet
+   */
+  collectBlockRefIds(targetSet) {
+    throw new Error('collectBlockRefIds() must be implemented by subclasses');
+  }
+
+  /**
    * ノード自身と子ノードを再帰的にコピーして新インスタンスを返す。
    * @returns {ExprNode}
    */
@@ -118,6 +127,14 @@
   }
 
   /**
+   * WordTokenNode は BlockRef を持たないので何もしない。
+   * @param {Set<string>} targetSet
+   */
+  collectBlockRefIds(targetSet) {
+    // WordTokenNode は BlockRef を持たない
+  }
+
+  /**
    * 自身の token をコピーした新しい WordTokenNode を返す。
    * @returns {WordTokenNode}
    */
@@ -164,6 +181,16 @@
    */
   collectWordTokens(targetSet) {
     // BlockRefNode 自体は token を直接は持たない
+  }
+
+  /**
+   * このノードの blockId を targetSet に追加する。
+   * @param {Set<string>} targetSet
+   */
+  collectBlockRefIds(targetSet) {
+    if (targetSet && typeof targetSet.add === 'function') {
+      targetSet.add(this.blockId);
+    }
   }
 
   /**
@@ -218,6 +245,14 @@
    */
   collectWordTokens(targetSet) {
     this.forEachChild((child) => child.collectWordTokens(targetSet));
+  }
+
+  /**
+   * 全子ノードに collectBlockRefIds を委譲する。
+   * @param {Set<string>} targetSet
+   */
+  collectBlockRefIds(targetSet) {
+    this.forEachChild((child) => child.collectBlockRefIds(targetSet));
   }
 
   /**
@@ -293,6 +328,14 @@
   }
 
   /**
+   * 左右の子ノードに collectBlockRefIds を委譲する。
+   * @param {Set<string>} targetSet
+   */
+  collectBlockRefIds(targetSet) {
+    this.forEachChild((child) => child.collectBlockRefIds(targetSet));
+  }
+
+  /**
    * mode, k を保ちつつ左右ノードを clone した新インスタンスを返す。
    * @returns {ProximityNode}
    */
@@ -344,6 +387,14 @@
    */
   collectWordTokens(targetSet) {
     this.forEachChild((child) => child.collectWordTokens(targetSet));
+  }
+
+  /**
+   * 全子ノードに collectBlockRefIds を委譲する。
+   * @param {Set<string>} targetSet
+   */
+  collectBlockRefIds(targetSet) {
+    this.forEachChild((child) => child.collectBlockRefIds(targetSet));
   }
 
   /**

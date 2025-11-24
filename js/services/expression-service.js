@@ -68,8 +68,9 @@ class ExpressionService {
   }
 
   /**
-   * EquationBlock の AST から WordBlock を再生成
+   * EquationBlock の AST から WordBlock を再生成（後方互換性のため残す）
    * @param {string} ebId
+   * @deprecated 新しい decomposeEquationToBlocks を使用してください
    */
   regenerateWordsFromEquation(ebId) {
     const eb = this.repo.get(ebId);
@@ -83,6 +84,161 @@ class ExpressionService {
         this.repo.createWordBlockFromToken(token, `(${token})`);
       }
     });
+  }
+
+  /**
+   * 式ブロックを積要素に分解し、各要素をWordBlock/ClassBlock/EquationBlockとして生成
+   * （「式からブロック生成」機能）
+   * @param {string} ebId - 分解対象の EquationBlock ID
+   */
+  decomposeEquationToBlocks(ebId) {
+    const eb = this.repo.get(ebId);
+    if (!eb || eb.kind !== 'EB' || !eb.root) return;
+
+    // 積要素に分解
+    const factors = this._splitProductFactors(eb.root);
+
+    // 各要素を処理
+    factors.forEach((factor) => {
+      this._createBlockFromFactor(factor);
+    });
+  }
+
+  /**
+   * 式ノードを積要素に分解する
+   * トップレベルの "*" 演算子で因子を分解
+   * @param {ExprNode} node
+   * @returns {ExprNode[]}
+   * @private
+   */
+  _splitProductFactors(node) {
+    if (!node) return [];
+
+    // トップレベルが * 演算でない場合は、そのまま1要素として返す
+    if (!(node instanceof LogicalNode) || node.op !== '*') {
+      return [node];
+    }
+
+    // トップレベルの * を再帰的に展開
+    const factors = [];
+    const stack = [node];
+    
+    while (stack.length > 0) {
+      const n = stack.pop();
+      if (n instanceof LogicalNode && n.op === '*') {
+        // * 演算子の子要素をスタックに追加（逆順で push して順序を保持）
+        for (let i = n.children.length - 1; i >= 0; i--) {
+          stack.push(n.children[i]);
+        }
+      } else {
+        // * 以外の演算子または葉ノードは因子として追加
+        factors.push(n);
+      }
+    }
+
+    return factors;
+  }
+
+  /**
+   * 因子からブロックを生成する
+   * @param {ExprNode} factor
+   * @private
+   */
+  _createBlockFromFactor(factor) {
+    if (!factor) return;
+
+    // BlockRefNode の場合: 既存ブロックへの参照なので何もしない
+    if (factor instanceof BlockRefNode) {
+      // 既にブロックとして存在しているので、新規作成は不要
+      return;
+    }
+
+    // WordTokenNode のみで構成されているか確認
+    if (this._isOnlyWordTokens(factor)) {
+      const tokens = new Set();
+      factor.collectWordTokens(tokens);
+      
+      // 単一トークンの場合
+      if (tokens.size === 1) {
+        const token = Array.from(tokens)[0];
+        
+        // 分類コードっぽいかチェック
+        if (this._looksLikeClassificationCode(token)) {
+          // 分類ブロックとして生成
+          if (!this.repo.findClassBlockByToken(token)) {
+            const id = this.repo.findOrCreateIdForLabel(token, 'CB');
+            const cb = new ClassBlock(id, token, token, [token]);
+            this.repo.upsert(cb);
+          }
+        } else {
+          // Wordブロックとして生成
+          if (!this.repo.findWordBlockByToken(token)) {
+            this.repo.createWordBlockFromToken(token, `(${token})`);
+          }
+        }
+      } else {
+        // 複数トークン: すべてのトークンについてWordBlockを生成
+        tokens.forEach((token) => {
+          if (this._looksLikeClassificationCode(token)) {
+            if (!this.repo.findClassBlockByToken(token)) {
+              const id = this.repo.findOrCreateIdForLabel(token, 'CB');
+              const cb = new ClassBlock(id, token, token, [token]);
+              this.repo.upsert(cb);
+            }
+          } else {
+            if (!this.repo.findWordBlockByToken(token)) {
+              this.repo.createWordBlockFromToken(token, `(${token})`);
+            }
+          }
+        });
+      }
+      return;
+    }
+
+    // 複合式の場合: 新しい式ブロックとして生成
+    const logical = factor.renderLogical ? factor.renderLogical() : 'unknown';
+    const label = `F: ${logical.substring(0, 20)}${logical.length > 20 ? '...' : ''}`;
+    const id = this.repo.findOrCreateIdForLabel(label, 'EB');
+    
+    let newEb = this.repo.get(id);
+    if (newEb && newEb.kind === 'EB') {
+      newEb.setRoot(factor.clone ? factor.clone() : factor);
+    } else {
+      newEb = new EquationBlock(id, label, factor.clone ? factor.clone() : factor);
+    }
+    
+    this.repo.upsert(newEb);
+  }
+
+  /**
+   * ノードが WordTokenNode のみで構成されているかチェック
+   * @param {ExprNode} node
+   * @returns {boolean}
+   * @private
+   */
+  _isOnlyWordTokens(node) {
+    if (!node) return false;
+    
+    if (node instanceof WordTokenNode) return true;
+    
+    if (node instanceof LogicalNode) {
+      // 子がすべて WordTokenNode なら true
+      return node.children.every((ch) => this._isOnlyWordTokens(ch));
+    }
+    
+    return false;
+  }
+
+  /**
+   * トークンが分類コードっぽいかチェック（簡易版）
+   * @param {string} token
+   * @returns {boolean}
+   * @private
+   */
+  _looksLikeClassificationCode(token) {
+    // H04W16/24 のようなパターンをチェック
+    // 大文字で始まり数字とスラッシュを含む
+    return /^[A-Z]\d{2}[A-Z]\d+\/\d+/.test(token);
   }
 
   /**

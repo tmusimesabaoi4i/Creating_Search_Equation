@@ -60,7 +60,8 @@ class ViewRenderer {
 
     const header = create('div', 'block-card__title');
     const labelSpan = create('span', 'block-card__label');
-    labelSpan.textContent = word.label || word.token || word.id;
+    // ID非表示化: label || token で表示、IDはフォールバックとして非表示
+    labelSpan.textContent = word.label || word.token || '(無名 Word)';
 
     const pill = create('span', 'block-card__pill');
     pill.textContent = 'WORD';
@@ -118,7 +119,8 @@ class ViewRenderer {
 
     const header = create('div', 'block-card__title');
     const labelSpan = create('span', 'block-card__label');
-    labelSpan.textContent = cb.label || cb.id;
+    // ID非表示化: label || token で表示、IDはフォールバックとして非表示
+    labelSpan.textContent = cb.label || cb.token || '(無名 Class)';
 
     const pill = create('span', 'block-card__pill block-card__pill--class');
     pill.textContent = 'CLASS';
@@ -181,7 +183,8 @@ class ViewRenderer {
 
     const header = create('div', 'block-card__title');
     const labelSpan = create('span', 'block-card__label');
-    labelSpan.textContent = eb.label || eb.id;
+    // ID非表示化: IDはフォールバックとして非表示
+    labelSpan.textContent = eb.label || '(無名式)';
 
     const btnRow = create('div', 'block-card__buttons');
 
@@ -190,16 +193,16 @@ class ViewRenderer {
       'btn-small js-decompose-words'
     );
     btnDecompose.type = 'button';
-    btnDecompose.textContent = '語再生成';
+    btnDecompose.textContent = '式からブロック生成';
 
     const btnEdit = create('button', 'btn-small js-edit-block');
     btnEdit.type = 'button';
     btnEdit.textContent = '編集';
 
-    // ★ 追加: 検索式コピー用ボタン
+    // ★ 検索式コピー用ボタン
     const copyBtn = create('button', 'btn-small js-copy-equation-query');
     copyBtn.type = 'button';
-    copyBtn.textContent = 'コピー';
+    copyBtn.textContent = '検索式コピー';
 
     const btnDelete = create('button', 'btn-small js-delete-block');
     btnDelete.type = 'button';

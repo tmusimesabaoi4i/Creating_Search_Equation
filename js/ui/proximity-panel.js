@@ -141,7 +141,18 @@ class ProximityPanel {
           : '[E]';
 
       const spanText = create('span', 'builder-selection-item__text');
-      spanText.textContent = `${kindLabel} ${blk.label || blk.id}`;
+      // ID非表示化: IDはフォールバックとして非表示
+      let displayLabel = blk.label;
+      if (!displayLabel) {
+        if (blk.kind === 'WB') {
+          displayLabel = blk.token || '(無名 Word)';
+        } else if (blk.kind === 'CB') {
+          displayLabel = blk.token || '(無名 Class)';
+        } else {
+          displayLabel = '(無名式)';
+        }
+      }
+      spanText.textContent = `${kindLabel} ${displayLabel}`;
 
       const btnUp = create('button', 'btn-small builder-selection-item__up');
       btnUp.type = 'button';
@@ -216,9 +227,6 @@ class ProximityPanel {
     const hasBlocks = n > 0;
     const canProxAll = blocks.every((b) => this._isProxCandidateBlock(b));
 
-    // 「2 項演算モード」かどうか（AND/OR の特別扱い用）
-    const isBinaryMode = n === 2;
-
     if (this.btnBuildL1) {
       this.btnBuildL1.disabled = n !== 1;
     }
@@ -229,23 +237,33 @@ class ProximityPanel {
       this.btnBuildProx3.disabled = !(n === 3 && canProxAll);
     }
 
-    // OR/AND: 2 つ必要（近傍パネルでは 2 項演算モードを前提とする）
-    // ただし OR は「Word 系のみ」or「Class 系のみ」のときのみ許可。
-    // さらに「式 + Word / Class」のときは式構造に応じて禁止パターンを弾く。
-    const orType = this._getLogicalTypeForBlocks(blocks);
-    const allowOrByType = orType === 'word' || orType === 'class';
-    const allowOrByScenario =
-      isBinaryMode && allowOrByType
-        ? this._isOrOperationAllowedForPair(blocks[0], blocks[1], orType)
-        : true;
-    if (this.btnBuildOr) {
-      this.btnBuildOr.disabled =
-        !isBinaryMode || !hasBlocks || !allowOrByType || !allowOrByScenario;
+    // AND: 2 個以上で有効（複数個の積を許可）
+    if (this.btnBuildAnd) {
+      this.btnBuildAnd.disabled = n < 2;
     }
 
-    if (this.btnBuildAnd) {
-      // AND は Word+Class も許可（積演算）だが、ここでは 2 項のみを対象とする
-      this.btnBuildAnd.disabled = !isBinaryMode || !hasBlocks;
+    // OR: 2 個以上で有効
+    // すべて式ブロックの場合は無条件に許可（任意の式ブロック同士の和）
+    // それ以外は「Word 系のみ」or「Class 系のみ」のときのみ許可
+    if (this.btnBuildOr) {
+      const allEquation = blocks.every((b) => b.kind === 'EB');
+      
+      if (allEquation) {
+        // すべて式ブロックの場合は無条件に許可
+        this.btnBuildOr.disabled = n < 2;
+      } else {
+        // それ以外の場合は既存のロジック
+        const orType = this._getLogicalTypeForBlocks(blocks);
+        const allowOrByType = orType === 'word' || orType === 'class';
+        
+        // 2個の場合のみ、式と他ブロックの組み合わせをチェック
+        let allowOrByScenario = true;
+        if (n === 2 && allowOrByType) {
+          allowOrByScenario = this._isOrOperationAllowedForPair(blocks[0], blocks[1], orType);
+        }
+        
+        this.btnBuildOr.disabled = n < 2 || !allowOrByType || !allowOrByScenario;
+      }
     }
   }
 
@@ -291,8 +309,9 @@ class ProximityPanel {
           typeSet.add('empty');
         } else {
           const parts = translateExprToFieldParts(b.root, ctx);
-          const hasWord = !!(parts.w && parts.w.trim().length > 0);
-          const hasClass = parts.c && parts.c.length > 0;
+          // parts.w は配列なので trim() ではなく length でチェック
+          const hasWord = !!(Array.isArray(parts.w) && parts.w.length > 0);
+          const hasClass = Array.isArray(parts.c) && parts.c.length > 0;
           if (hasWord && hasClass) typeSet.add('mixed');
           else if (hasWord) typeSet.add('word');
           else if (hasClass) typeSet.add('class');
@@ -329,6 +348,11 @@ class ProximityPanel {
     const isEq = (b) => b && b.kind === 'EB';
     const isWord = (b) => b && b.kind === 'WB';
     const isClass = (b) => b && b.kind === 'CB';
+
+    // 両方とも式ブロックの場合は無条件に許可（任意の式ブロック同士の和）
+    if (isEq(left) && isEq(right)) {
+      return true;
+    }
 
     const eq =
       isEq(left) && !isEq(right)
@@ -412,8 +436,9 @@ class ProximityPanel {
         let anyWord = false;
         let anyClass = false;
         list.forEach((p) => {
-          const hasWord = !!(p.w && p.w.trim().length > 0);
-          const hasClass = p.c && p.c.length > 0;
+          // parts.w は配列なので length でチェック
+          const hasWord = !!(Array.isArray(p.w) && p.w.length > 0);
+          const hasClass = Array.isArray(p.c) && p.c.length > 0;
           if (hasWord) anyWord = true;
           if (hasClass) anyClass = true;
         });
@@ -425,8 +450,9 @@ class ProximityPanel {
 
       if (op === '*') {
         const parts = translateExprToFieldParts(root, ctx);
-        const hasWord = !!(parts.w && parts.w.trim().length > 0);
-        const hasClass = parts.c && parts.c.length > 0;
+        // parts.w は配列なので length でチェック
+        const hasWord = !!(Array.isArray(parts.w) && parts.w.length > 0);
+        const hasClass = Array.isArray(parts.c) && parts.c.length > 0;
 
         if (hasWord && hasClass) return 'MIX_PROD';
         if (!hasWord && hasClass) return 'C_PROD';
@@ -437,8 +463,9 @@ class ProximityPanel {
 
     // LogicalNode 以外の場合は全体を 1 式として判定（保守的に扱う）
     const parts = translateExprToFieldParts(root, ctx);
-    const hasWord = !!(parts.w && parts.w.trim().length > 0);
-    const hasClass = parts.c && parts.c.length > 0;
+    // parts.w は配列なので length でチェック
+    const hasWord = !!(Array.isArray(parts.w) && parts.w.length > 0);
+    const hasClass = Array.isArray(parts.c) && parts.c.length > 0;
 
     if (hasWord && hasClass) return 'MIX_PROD';
     if (!hasWord && hasClass) return 'C_SUM';
@@ -576,34 +603,46 @@ class ProximityPanel {
   handleBuildLogical(op) {
     const blocks = this._getSelectedBlocks();
 
-    // 近傍パネルでは「2 項演算モード」のみを対象とする
-    if (blocks.length !== 2) {
-      this.showMessage('OR/AND 結合には素材を 2 つ選択してください。', 'error');
+    // 2 個以上必要
+    if (blocks.length < 2) {
+      this.showMessage(
+        op === '+' 
+          ? 'OR 結合には素材を 2 つ以上選択してください。'
+          : 'AND 結合には素材を 2 つ以上選択してください。',
+        'error'
+      );
       return;
     }
 
     const logicalType = this._getLogicalTypeForBlocks(blocks);
 
     if (op === '+') {
-      // Word+Class の和演算は禁止（基本ルール）
-      if (!(logicalType === 'word' || logicalType === 'class')) {
-        this.showMessage(
-          '和演算は「Word系だけ」または「分類系だけ」の場合にのみ使用できます（Wordと分類の和演算は禁止）。',
-          'error'
-        );
-        return;
-      }
+      // すべて式ブロックの場合は無条件に許可（任意の式ブロック同士の和）
+      const allEquation = blocks.every((b) => b.kind === 'EB');
+      
+      if (!allEquation) {
+        // 式ブロック以外が含まれる場合は既存のルールを適用
+        // Word+Class の和演算は禁止（基本ルール）
+        if (!(logicalType === 'word' || logicalType === 'class')) {
+          this.showMessage(
+            '和演算は「Word系だけ」または「分類系だけ」または「式ブロックだけ」の場合にのみ使用できます（Wordと分類の和演算は禁止）。',
+            'error'
+          );
+          return;
+        }
 
-      // 「式 + Word / Class」の場合は、式ブロックの構造に応じて
-      // 仕様上禁止されている OR パターンを弾く。
-      const left = blocks[0];
-      const right = blocks[1];
-      if (!this._isOrOperationAllowedForPair(left, right, logicalType)) {
-        this.showMessage(
-          'この組み合わせの OR は仕様上禁止されています（式構造に起因）。',
-          'error'
-        );
-        return;
+        // 2個の場合のみ、「式 + Word / Class」の組み合わせをチェック
+        if (blocks.length === 2) {
+          const left = blocks[0];
+          const right = blocks[1];
+          if (!this._isOrOperationAllowedForPair(left, right, logicalType)) {
+            this.showMessage(
+              'この組み合わせの OR は仕様上禁止されています（式構造に起因）。',
+              'error'
+            );
+            return;
+          }
+        }
       }
     }
 

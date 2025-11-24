@@ -194,11 +194,13 @@ class AppController {
     const block = this.repo.get(id);
     if (!block) return;
 
-    // 語再生成
+    // 式からブロック生成（旧: 語再生成）
     if (target.closest('.js-decompose-words')) {
       event.stopPropagation();
-      this.exprService.regenerateWordsFromEquation(id);
+      this.exprService.decomposeEquationToBlocks(id);
+      // Word、Class、Equation すべて再描画
       this.renderWordsOnly();
+      this.renderEquationsOnly();
       if (this.proxPanel) this.proxPanel.onRepositoryUpdated();
       return;
     }
