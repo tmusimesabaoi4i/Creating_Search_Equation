@@ -1,117 +1,68 @@
 /* css/layout.css */
-/* 3 分割レイアウトとパネル全体のレイアウト */
+/* パネル全体のレイアウト */
 
-/* 修正版 css/layout.css */
 .app {
   display: grid;
   grid-template-rows: auto 1fr 1.2fr;
-  /* height は消すか、auto にする */
-  height: 100vh; /* ← コメントアウト or 削除 */
-  /* 代わりに最低限は親の高さに合わせたいなら: */
   min-height: 100%;
-  gap: 8px;
-  padding: 8px;
+  gap: var(--space-md);
+  padding: var(--space-md);
 }
 
-
-/* 各パネルの共通レイアウト */
 .panel {
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  padding: 8px;
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  
-  background-color: #fff;
+  background-color: var(--bg-panel);
 }
 
-/* パネルヘッダー */
 .panel__header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-sm);
 }
 
-/* ブロック一覧 (Word & Equation) */
 .block-list {
   flex: 1;
   overflow-y: auto;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 2px;
+  gap: var(--space-md);
+  padding: var(--space-xs);
 }
 
-/* 式パネル内部のレイアウト (Equation list + Builder panel) */
 .panel-equation-body {
   display: flex;
   flex: 1;
   overflow: hidden;
-  gap: 8px;
+  gap: var(--space-md);
 }
 
-/* 左: Equation ブロック一覧 */
 .block-list--equations {
   flex: 2;
   min-width: 0;
 }
 
-/* 中: Word ブロック一覧 */
-/* .block-list--words { */
-  /* 上の panel--words 内で全体を埋める */
-/* } */
-
-/* 右: 式ビルダーパネル */
 .builder-panel {
   flex: 1.2;
   min-width: 220px;
   max-width: 360px;
-  border-left: 1px solid #eee;
-  padding-left: 8px;
+  border-left: 1px solid var(--border-muted);
+  padding-left: var(--space-md);
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-/* ビルダーパネル内のセクション */
-.builder-panel__section {
-  border: 1px solid #eee;
-  border-radius: 4px;
-  padding: 6px;
-  margin-bottom: 4px;
-  background-color: #fafafa;
+  gap: var(--space-md);
 }
 
 .builder-panel__title {
   font-size: 13px;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-sm);
 }
 
-/* 計算機的な UI がごちゃつかないようにするコンテナ */
-.builder-panel__section-title {
-  font-size: 12px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-/* 上部の式入力パネルを少し大きく使う */
-.panel--input {
-  min-height: 160px;
-}
-
-/* 中部 Word パネル */
-.panel--words {
-  min-height: 140px;
-}
-
-/* 下部 Equation パネル */
-.panel--equations {
-  min-height: 200px;
-}
-
-/* スマホ / 狭い画面向け簡易ブレークポイント */
 @media (max-width: 900px) {
   .app {
     grid-template-rows: auto auto auto;
@@ -125,9 +76,9 @@
   .builder-panel {
     max-width: none;
     border-left: none;
-    border-top: 1px solid #eee;
+    border-top: 1px solid var(--border-muted);
     padding-left: 0;
-    padding-top: 8px;
+    padding-top: var(--space-md);
   }
 
   .block-list {

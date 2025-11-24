@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>特許検索式ブロックビルダー - 3ペインワークスペース</title>
 
   <!-- CSS 読み込み -->
@@ -11,21 +12,18 @@
   <link rel="stylesheet" href="css/block-card.css" />
   <link rel="stylesheet" href="css/controls.css" />
   <link rel="stylesheet" href="css/state.css" />
-  <!-- 3カラム用のレイアウト調整 -->
+  <link rel="stylesheet" href="css/title.css" />
   <link rel="stylesheet" href="css/workspace-3col.css" />
   <!-- ブロックビルダー(上部の単語/分類切替)用 -->
   <link rel="stylesheet" href="css/builder.css" />
 </head>
 <body>
-  <!-- ★ 3カラム全体を包むコンテナ -->
   <div class="workspace">
-    <!-- 左: 特許検索式ブロックビルダー本体 -->
     <div class="workspace__left">
       <div class="app">
-        <!-- 上: 式入力 / ブロックビルダー -->
         <section class="panel panel--input">
           <header class="panel__header">
-            <h2>式入力 / ブロックビルダー</h2>
+            <h2>式入力とブロック化</h2>
           </header>
 
           <textarea
@@ -34,73 +32,76 @@
             placeholder="例1) NB = 基地局+NB+eNB&#10;例2) H04W16/24+H04W36/00"
           ></textarea>
 
-          <!-- ブロックビルダー: 単語 / 分類 選択 + ボタン -->
           <div class="builder-input-row">
             <div class="builder-kind-select">
               <label>
-                <input type="radio" name="builder-kind" value="word" checked />
-                単語ブロック
+                <input type="radio" name="builder-kind" value="word" checked id="builder-kind-word" />
+                語ブロック
               </label>
               <label>
-                <input type="radio" name="builder-kind" value="class" />
+                <input type="radio" name="builder-kind" value="class" id="builder-kind-class" />
                 分類ブロック
               </label>
+              <label>
+                <input type="radio" name="builder-kind" value="block" id="builder-kind-block" />
+                式から一括
+              </label>
             </div>
-            <button id="btn-parse" class="btn">
-              入力からブロック生成
+            <button id="btn-parse" type="button" class="btn" title="選択中のモードでブロックを生成します">
+              生成
+            </button>
+            <button id="btn-reset-words" type="button" class="btn" title="語ブロックと分類ブロックをすべて削除します">
+              語削除
+            </button>
+            <button id="btn-reset-equations" type="button" class="btn" title="式ブロックをすべて削除します">
+              式削除
             </button>
           </div>
 
           <div class="panel__help">
-            ・入力例 (単語): <code>NB = 基地局+NB+eNB</code> または
-            <code>基地局+NB+eNB</code>（名前なしの場合、token はランダム5文字）<br />
-            ・入力例 (分類): <code>H04W16/24+H04W36/00</code><br />
-            ・分類ブロックでは <code>*</code> や 近傍演算（<code>10n</code>, <code>10c</code>）
-            は使用できません。
+            <strong>入力例</strong><br />
+            語ブロック: <code>NB = 基地局+NB+eNB</code> または <code>基地局+NB+eNB</code><br />
+            分類ブロック: <code>H04W16/24+H04W36/00</code><br />
+            式から一括: <code>(A+B)/TX*(A+B+C)/TX*(F+D)/TX*S/TX</code><br />
+            <small>分類ブロックでは <code>*</code> や近傍演算（<code>10n</code>, <code>10c</code>）は使用できません。</small>
           </div>
 
           <div id="input-errors" class="error-message"></div>
         </section>
 
-        <!-- 中: Word / Class ブロック -->
         <section class="panel panel--words">
           <header class="panel__header">
-            <h2>Word / Class ブロック</h2>
+            <h2>語・分類ブロック一覧</h2>
           </header>
           <div id="word-list" class="block-list block-list--words"></div>
         </section>
 
-        <!-- 下: Equation ブロック + 式ビルダー -->
         <section class="panel panel--equations">
           <header class="panel__header">
-            <h2>式 bloc (Equation Blocks)</h2>
+            <h2>式ブロック一覧</h2>
           </header>
 
           <div class="panel-equation-body">
             <!-- 左: Equation ブロック一覧 -->
             <div id="equation-list" class="block-list block-list--equations"></div>
 
-            <!-- 右: 式ビルダーパネル -->
             <aside id="builder-panel" class="builder-panel">
               <h3 class="builder-panel__title">式ビルダー</h3>
 
-              <!-- 選択中素材一覧 -->
               <div class="builder-panel__section">
-                <div class="builder-panel__section-title">素材（最大 3 個）</div>
+                <div class="builder-panel__section-title">素材</div>
                 <ul id="builder-selection-list" class="builder-selection-list">
-                  <!-- ProximityPanel が li 要素を動的挿入 -->
                 </ul>
                 <div class="builder-panel__hint">
-                  Word / Equation カードをクリックして素材に追加します。<br />
-                  順序を変更するには ↑ / ↓ ボタンを使用します。
+                  語ブロックまたは式ブロックをクリックして素材に追加（最大3個）<br />
+                  順序変更は ↑ / ↓ ボタン
                 </div>
               </div>
 
-              <!-- 近傍パラメータ -->
               <div class="builder-panel__section">
-                <div class="builder-panel__section-title">近傍パラメータ</div>
+                <div class="builder-panel__section-title">近傍設定</div>
                 <div class="builder-panel__field">
-                  <span class="builder-panel__label">近傍形式</span>
+                  <span class="builder-panel__label">形式</span>
                   <label>
                     <input type="radio" name="prox-mode" value="n" checked />
                     n (NNn)
@@ -112,7 +113,7 @@
                 </div>
                 <div class="builder-panel__field">
                   <label class="builder-panel__label" for="prox-k-input">
-                    近傍数 (NN)
+                    近傍数
                   </label>
                   <input
                     id="prox-k-input"
@@ -125,31 +126,38 @@
                 </div>
               </div>
 
-              <!-- 式生成ボタン群 -->
               <div class="builder-panel__section">
-                <div class="builder-panel__section-title">式生成</div>
+                <div class="builder-panel__section-title">式作成</div>
                 <div class="builder-panel__buttons">
-                  <button id="btn-build-l1" class="btn-small">
-                    1要素式
+                  <button id="btn-build-l1" type="button" class="btn-small" title="選択中の素材1つから単独式を作成">
+                    単独
                   </button>
-                  <button id="btn-build-prox2" class="btn-small">
-                    2近傍式
+                  <button id="btn-build-prox2" type="button" class="btn-small" title="選択中の素材2つから2語近傍式を作成">
+                    2近傍
                   </button>
-                  <button id="btn-build-prox3" class="btn-small">
-                    3近傍式
+                  <button id="btn-build-prox3" type="button" class="btn-small" title="選択中の素材3つから3語近傍式を作成">
+                    3近傍
                   </button>
                 </div>
                 <div class="builder-panel__buttons">
-                  <button id="btn-build-or" class="btn-small">
-                    OR 結合 (E1 + E2)
+                  <button id="btn-build-or" type="button" class="btn-small" title="選択中の素材を和（OR）で結合">
+                    和結合
                   </button>
-                  <button id="btn-build-and" class="btn-small">
-                    AND 結合 (E1 * E2)
+                  <button id="btn-build-and" type="button" class="btn-small" title="選択中の素材を積（AND）で結合">
+                    積結合
                   </button>
                 </div>
               </div>
 
-              <!-- ビルダー専用メッセージ -->
+              <div class="builder-panel__section">
+                <div class="builder-panel__section-title">更新</div>
+                <div class="builder-panel__buttons">
+                  <button id="btn-builder-renew" type="button" class="btn-small" title="語ブロックの変更を式ブロックに反映">
+                    反映
+                  </button>
+                </div>
+              </div>
+
               <div id="builder-message" class="builder-panel__message"></div>
             </aside>
           </div>
@@ -157,8 +165,7 @@
       </div>
     </div>
 
-    <!-- 中央: Google 表示用 iframe -->
-    <div class="workspace__right">
+    <div class="workspace__center">
       <iframe
         class="workspace__frame"
         src="sample.html"
@@ -169,7 +176,6 @@
       </div>
     </div>
 
-    <!-- 右: メモ帳 -->
     <div class="workspace__right">
       <header class="workspace__right-header">
         <h2>メモ帳</h2>
@@ -187,7 +193,7 @@
   <script src="js/core/block.js"></script>
   <script src="js/core/block-repository.js"></script>
   <script src="js/core/render-context.js"></script>
-  <!-- token生成用 -->
+  <!-- ★ 追加 -->
   <script src="js/core/token-generator.js"></script>
 
   <script src="js/parser/token.js"></script>
@@ -195,6 +201,10 @@
   <script src="js/parser/parser.js"></script>
 
   <script src="js/services/expression-service.js"></script>
+  <!-- 新機能: 式の正規化とブロック変換 -->
+  <script src="js/services/expression-normalizer.js"></script>
+  <script src="js/services/word-normalizer.js"></script>
+  <script src="js/services/expression-block-converter.js"></script>
 
   <script src="js/ui/dom-utils.js"></script>
   <script src="js/ui/view-renderer.js"></script>

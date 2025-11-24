@@ -1,73 +1,78 @@
 /* css/block-card.css */
-/* Word ブロック / Equation ブロックカードの見た目 */
+/* Word / Class / Equation ブロックカードの見た目 */
 
 .block-card {
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  padding: 4px 6px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-default);
+  padding: var(--space-sm) var(--space-md);
   min-width: 160px;
   max-width: 280px;
-  font-size: 11px;
-  background-color: #fff;
+  font-size: var(--font-size-xs);
+  background-color: var(--bg-panel);
   cursor: pointer;
   display: flex;
   flex-direction: column;
+  gap: var(--space-sm);
 }
 
 /* .block-card + .block-card { */
   /* ブロック間の最小マージン。実際の隙間は .block-list の gap がメイン */
 /* } */
 
-/* ヘッダ部 */
-.block-card__header {
+.block-card__title {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 4px;
-  margin-bottom: 2px;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
 }
 
-.block-card__title {
-  font-size: 11px;
+.block-card__label {
+  font-size: var(--font-size-xs);
   font-weight: 600;
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
+  flex: 1;
 }
 
-.block-card__meta {
+.block-card__pill {
   font-size: 10px;
-  color: #888;
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  background-color: rgba(0, 0, 0, 0.1);
+  font-weight: 600;
+  margin-right: var(--space-xs);
 }
 
-/* カード内のアクションボタン群 */
-.block-card__actions {
+.block-card__pill--class {
+  background-color: rgba(139, 69, 19, 0.15);
+  color: #8b4513;
+}
+
+.block-card__buttons {
   display: flex;
-  gap: 2px;
-  margin-left: 4px;
+  gap: var(--space-xs);
+  margin-left: auto;
 }
 
-/* 本文部 */
 .block-card__body {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-xs);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
 }
 
-.block-card__line {
-  display: flex;
-  gap: 4px;
-}
-
-.block-card__label {
-  font-weight: 600;
-  margin-right: 2px;
-}
-
-/* Word / Equation の種別ごとの色分け */
+/* 種別ごとの色分け */
 .block-card--word {
   background: #f7fbff;
   border-color: #b3d4ff;
+}
+
+.block-card--class {
+  background: #fff8f0;
+  border-color: #ffd4a3;
 }
 
 .block-card--equation {
@@ -75,13 +80,11 @@
   border-color: #d8b3ff;
 }
 
-/* hover 時 */
 .block-card:hover {
   box-shadow: 0 0 0 1px rgba(74, 144, 226, 0.2);
 }
 
-/* キーボードフォーカス */
 .block-card:focus {
-  outline: 2px solid #4a90e2;
+  outline: 2px solid var(--color-primary);
   outline-offset: 1px;
 }

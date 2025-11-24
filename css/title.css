@@ -1,0 +1,89 @@
+/* css/title.css */
+/* ツールチップ（title属性）のスタイル */
+
+/* ネイティブツールチップのカスタマイズは限定的ですが、
+   将来的にJavaScriptでカスタムツールチップを実装する場合に備えて
+   スタイルを定義しておきます */
+
+/* title属性を持つ要素の基本スタイル */
+[title] {
+  cursor: help;
+  position: relative;
+}
+
+/* ボタンやインタラクティブ要素のtitle属性は
+   デフォルトのツールチップに任せつつ、
+   ホバー時の視覚的フィードバックを追加 */
+button[title]:hover,
+.btn[title]:hover,
+.btn-small[title]:hover {
+  /* ツールチップ表示時の視覚的フィードバックは
+     ブラウザのネイティブツールチップに任せる
+     必要に応じて、ここに追加のスタイルを定義 */
+  opacity: 0.95;
+}
+
+/* 将来的にカスタムツールチップを実装する場合のクラス */
+.tooltip {
+  position: absolute;
+  z-index: 10000;
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  color: #fff;
+  background-color: rgba(0, 0, 0, 0.85);
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.tooltip.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ツールチップの矢印（将来的に実装する場合） */
+.tooltip::before {
+  content: '';
+  position: absolute;
+  width: 0;
+  height: 0;
+  border: 4px solid transparent;
+}
+
+/* ツールチップが上に表示される場合の矢印 */
+.tooltip--top::before {
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-top-color: rgba(0, 0, 0, 0.85);
+}
+
+/* ツールチップが下に表示される場合の矢印 */
+.tooltip--bottom::before {
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-bottom-color: rgba(0, 0, 0, 0.85);
+}
+
+/* ツールチップが左に表示される場合の矢印 */
+.tooltip--left::before {
+  right: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-left-color: rgba(0, 0, 0, 0.85);
+}
+
+/* ツールチップが右に表示される場合の矢印 */
+.tooltip--right::before {
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-right-color: rgba(0, 0, 0, 0.85);
+}
+

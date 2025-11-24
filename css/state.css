@@ -3,21 +3,22 @@
 
 /* 選択中カード */
 .is-selected {
-  outline: 2px solid #4a90e2;
+  outline: 2px solid var(--color-primary);
   outline-offset: 1px;
+  background-color: rgba(74, 144, 226, 0.05);
 }
 
 /* 入力エラーなど（汎用） */
 .is-error {
-  border-color: #e74c3c !important;
+  border-color: var(--color-error) !important;
   background-color: #fff4f4;
 }
 
 /* 入力エラーのメッセージ領域 */
 .error-message {
-  color: #e74c3c;
-  font-size: 11px;
-  margin-top: 4px;
+  color: var(--color-error);
+  font-size: var(--font-size-xs);
+  margin-top: var(--space-sm);
   white-space: pre-wrap;
   min-height: 1.2em;
   display: none;
@@ -29,11 +30,11 @@
 
 /* ビルダーのメッセージ状態 */
 .builder-panel__message.is-error {
-  color: #e74c3c;
+  color: var(--color-error);
 }
 
 .builder-panel__message.is-info {
-  color: #2d7dd2;
+  color: var(--color-primary);
 }
 
 /* ---- トーストメッセージ ---- */
@@ -49,17 +50,17 @@
 .toast {
   min-width: 200px;
   max-width: 320px;
-  margin-top: 4px;
-  padding: 8px 12px;
-  border-radius: 4px;
-  font-size: 12px;
+  margin-top: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
   color: #fff;
   background: rgba(51, 51, 51, 0.92);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
   opacity: 0;
   transform: translateY(8px);
   transition: opacity 0.2s ease, transform 0.2s ease;
-  pointer-events: auto; /* もし将来クリックで閉じる等にするなら */
+  pointer-events: auto;
 }
 
 .toast.is-visible {
@@ -68,9 +69,9 @@
 }
 
 .toast--success {
-  background: rgba(46, 204, 113, 0.94); /* 緑 */
+  background: rgba(46, 204, 113, 0.94);
 }
 
 .toast--error {
-  background: rgba(231, 76, 60, 0.94);  /* 赤 */
+  background: rgba(231, 76, 60, 0.94);
 }

@@ -1,6 +1,43 @@
 /* css/base.css */
 /* 全体のベーススタイル（フォント、box-sizing、余白リセット） */
 
+:root {
+  /* 色 */
+  --color-primary: #4a90e2;
+  --color-primary-hover: #357abd;
+  --color-success: #2ecc71;
+  --color-error: #e74c3c;
+  --color-warning: #f39c12;
+  --color-text: #222;
+  --color-text-muted: #666;
+  --color-text-light: #888;
+  --bg-page: #fafafa;
+  --bg-panel: #ffffff;
+  --bg-panel-alt: #fafafa;
+  --border-default: #ccc;
+  --border-muted: #e0e0e0;
+  --border-focus: #4a90e2;
+
+  /* 余白 */
+  --space-xs: 2px;
+  --space-sm: 4px;
+  --space-md: 8px;
+  --space-lg: 12px;
+  --space-xl: 16px;
+
+  /* 角丸 */
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+
+  /* フォント */
+  --font-size-base: 15px;
+  --font-size-sm: 12px;
+  --font-size-xs: 11px;
+  --font-size-lg: 14px;
+  --line-height-base: 1.5;
+}
+
 html,
 body {
   margin: 0;
@@ -11,11 +48,10 @@ body {
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     sans-serif;
-  /* 🔁 14px → 15px に拡大 */
-  font-size: 15px;
-  line-height: 1.5; /* 少しだけ行間もゆるく */
-  color: #222;
-  background-color: #fafafa;
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  color: var(--color-text);
+  background-color: var(--bg-page);
 }
 
 /* すべての要素で box-sizing: border-box */
@@ -25,12 +61,10 @@ body {
   box-sizing: border-box;
 }
 
-/* 等幅フォント */
 code,
 pre,
 textarea {
   font-family: Consolas, 'Courier New', monospace;
-  /* 🔁 12px → 13px に拡大 */
   font-size: 13px;
 }
 

@@ -1,88 +1,85 @@
 /* css/workspace-3col.css */
-/* 3カラムワークスペース用レイアウト */
-
-/* 画面全体を3カラムで分割 */
 .workspace {
   display: grid;
   width: 100vw;
   height: 100vh;
-  grid-template-columns: 2.1fr 1.4fr 1.2fr; /* 左:広め / 中央 / 右:少し狭め */
-  column-gap: 8px;
-  padding: 4px;
+  grid-template-columns: 2.1fr 1.4fr 1.2fr;
+  column-gap: var(--space-md);
+  padding: var(--space-sm);
 }
 
-/* 各カラム共通 */
 .workspace__left,
 .workspace__center,
 .workspace__right {
-  min-height: 0;      /* 内側スクロールを有効にするため */
-  overflow-x: hidden; /* 横スクロールは出さない */
+  min-height: 0;
+  overflow-x: hidden;
 }
 
-/* ★ 中央カラムはセル自体がスクロール担当 */
-.workspace__center {
-  overflow-y: auto;
-}
-
-/* ★ 左カラムの枠はスクロールさせず、中の .app に任せる */
 .workspace__left {
   overflow-y: auto;
 }
 
-/* ★ 左カラム内の .app をスクロール担当にする */
+.workspace__center {
+  overflow-y: auto;
+}
+
+.workspace__right {
+  display: flex;
+  flex-direction: column;
+  overflow-y: hidden;
+}
+
 .workspace__left .app {
-  /* layout.css での height 指定を上書き */
+  display: flex;
+  flex-direction: column;
   height: auto;
   min-height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
+  gap: var(--space-md);
 }
 
-/* 中央: Google iframe */
 .workspace__frame {
   width: 100%;
-  height: calc(100% - 24px); /* 下部注意書き分だけ差し引き */
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background-color: #fff;
+  height: calc(100% - 24px);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-lg);
+  background-color: var(--bg-panel);
 }
 
 .workspace__note {
-  margin-top: 4px;
-  font-size: 11px;
-  color: #666;
-}
-
-/* 右: メモ帳 */
-.workspace__right {
-  display: flex;
-  flex-direction: column;
-  /* 右もスクロールさせたければ overflow-y: auto; に変えてOK */
-  overflow-y: hidden;
+  margin-top: var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
 }
 
 .workspace__right-header {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-sm);
 }
 
 .memo-textarea {
   flex: 1;
   width: 100%;
   resize: none;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  padding: 4px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-default);
+  padding: var(--space-sm);
   box-sizing: border-box;
   font-family: Consolas, 'Courier New', monospace;
   font-size: 13px;
-  background-color: #fff;
+  background-color: var(--bg-panel);
 }
 
-/* 3カラム時でも元の .panel, .block-list 挙動を壊さないための保険 */
 .workspace__left .panel {
-  margin-bottom: 6px;
+  margin-bottom: var(--space-md);
 }
 
 .workspace__left .block-list {
   max-height: 100%;
+}
+
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
 }

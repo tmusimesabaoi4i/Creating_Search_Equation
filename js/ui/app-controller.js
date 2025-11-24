@@ -20,7 +20,9 @@ class AppController {
       wordList: null,
       equationList: null,
       errorBox: null,
-      builderRenewButton: null
+      builderRenewButton: null,
+      resetWordsButton: null,
+      resetEquationsButton: null
     };
 
     // ビルダー用の選択 ID（Word / Equation 共通、最大3）
@@ -36,6 +38,8 @@ class AppController {
     this.elements.equationList = qs('#equation-list');
     this.elements.errorBox = qs('#input-errors');
     this.elements.builderRenewButton = qs('#btn-builder-renew');
+    this.elements.resetWordsButton = qs('#btn-reset-words');
+    this.elements.resetEquationsButton = qs('#btn-reset-equations');
 
     this.proxPanel = new ProximityPanel(this);
     this.proxPanel.init();
@@ -69,6 +73,18 @@ class AppController {
     if (this.elements.equationList) {
       this.elements.equationList.addEventListener('click', (e) =>
         this.onEquationListClick(e)
+      );
+    }
+
+    if (this.elements.resetWordsButton) {
+      this.elements.resetWordsButton.addEventListener('click', () =>
+        this.onResetWordsClick()
+      );
+    }
+
+    if (this.elements.resetEquationsButton) {
+      this.elements.resetEquationsButton.addEventListener('click', () =>
+        this.onResetEquationsClick()
       );
     }
   }
@@ -463,10 +479,6 @@ class AppController {
 
   handleDeleteBlock(block) {
     if (!block) return;
-    const ok = window.showToast(
-      `ブロックを削除しますか？\n${block.kind}: ${block.label || block.id}`
-    );
-    if (!ok) return;
 
     this.repo.remove(block.id);
 
@@ -478,6 +490,63 @@ class AppController {
 
     this.renderAll();
     if (this.proxPanel) this.proxPanel.onRepositoryUpdated();
+
+    const kindName = block.kind === 'WB' ? 'Word' : block.kind === 'CB' ? 'Class' : 'Equation';
+    this.showToast(`${kindName}ブロック「${block.label || block.id}」を削除しました`, 'success');
+  }
+
+  /**
+   * Word/Classブロックをすべて削除
+   */
+  onResetWordsClick() {
+    const words = this.repo.getAllWords();
+    const classes = this.repo.getAllClasses();
+    const allBlocks = [...words, ...classes];
+
+    if (allBlocks.length === 0) {
+      this.showToast('削除するWord/Classブロックがありません', 'info');
+      return;
+    }
+
+    allBlocks.forEach(block => {
+      this.repo.remove(block.id);
+      const idx = this.state.builderSelectionIds.indexOf(block.id);
+      if (idx >= 0) {
+        this.state.builderSelectionIds.splice(idx, 1);
+      }
+    });
+
+    this.setBuilderSelectionIds(this.state.builderSelectionIds);
+    this.renderAll();
+    if (this.proxPanel) this.proxPanel.onRepositoryUpdated();
+
+    this.showToast(`Word/Classブロック ${allBlocks.length}個を削除しました`, 'success');
+  }
+
+  /**
+   * Equationブロックをすべて削除
+   */
+  onResetEquationsClick() {
+    const equations = this.repo.getAllEquations();
+
+    if (equations.length === 0) {
+      this.showToast('削除するEquationブロックがありません', 'info');
+      return;
+    }
+
+    equations.forEach(block => {
+      this.repo.remove(block.id);
+      const idx = this.state.builderSelectionIds.indexOf(block.id);
+      if (idx >= 0) {
+        this.state.builderSelectionIds.splice(idx, 1);
+      }
+    });
+
+    this.setBuilderSelectionIds(this.state.builderSelectionIds);
+    this.renderAll();
+    if (this.proxPanel) this.proxPanel.onRepositoryUpdated();
+
+    this.showToast(`Equationブロック ${equations.length}個を削除しました`, 'success');
   }
 
   openEditModal(block) {

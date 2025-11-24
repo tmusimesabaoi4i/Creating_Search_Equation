@@ -1,25 +1,25 @@
 /* css/builder.css */
-/* ブロックビルダー（単語 / 分類 選択 + ボタン）用スタイル */
+/* ブロックビルダー（単語 / 分類 / ブロック 選択 + ボタン）用スタイル */
 
 .builder-input-row {
-  margin-top: 6px;
+  margin-top: var(--space-md);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-md);
   flex-wrap: wrap;
 }
 
 .builder-kind-select {
   display: flex;
-  gap: 8px;
-  font-size: 12px;
+  gap: var(--space-md);
+  font-size: var(--font-size-sm);
 }
 
 .builder-kind-select label {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-sm);
   cursor: pointer;
 }
 
@@ -27,7 +27,36 @@
   transform: scale(0.9);
 }
 
-/* renew ボタンに少しだけ余白をつける */
-#btn-builder-renew {
-  margin-top: 4px;
+.builder-panel__section {
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  margin-bottom: var(--space-sm);
+  background-color: var(--bg-panel-alt);
+}
+
+.builder-panel__section-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  margin-bottom: var(--space-sm);
+}
+
+.builder-panel__field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.builder-panel__label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  margin-right: var(--space-sm);
+}
+
+.builder-panel__hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-light);
+  margin-top: var(--space-xs);
 }
